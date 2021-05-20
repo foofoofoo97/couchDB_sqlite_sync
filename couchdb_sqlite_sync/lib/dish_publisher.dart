@@ -33,20 +33,26 @@ class DishPublisher {
     Dish dish = new Dish(
         id: int.parse(value['doc']['_id']),
         name: value['doc']['name'],
-        rev: value['doc']['rev'],
+        rev: value['doc']['_rev'],
         no: value['doc']['no']);
 
-    bool isExisting =
+    String currentRev =
         await dishBloc.isExistingID(int.parse(value['doc']['_id']));
-    if (isExisting) {
-      dishBloc.updateSubjectSync(dish);
+    if (currentRev != null) {
+      if (currentRev == dish.rev) {
+        dishBloc.updateSubjectSync(dish);
+      }
     } else {
       dishBloc.addSubjectSync(dish);
     }
   }
 
   static Future<void> deleteSqllite(Map value) async {
-    dishBloc.deleteSubjectByIdSync(int.parse(value['id']));
+    String currentRev =
+        await dishBloc.isExistingID(int.parse(value['doc']['_id']));
+    if (currentRev != null && currentRev == value['doc']['_rev']) {
+      dishBloc.deleteSubjectByIdSync(int.parse(value['id']));
+    }
   }
 
   static Future<void> setCouchDishDB(Dish dish) async {
@@ -69,10 +75,13 @@ class DishPublisher {
     }
   }
 
-  static Future<void> deleteCouchDishDB(int id) async {
+  static Future<void> deleteCouchDishDB(Dish dish) async {
     try {
-      DocumentsResponse result = await docs.doc('a-dish', id.toString());
-      await docs.deleteDoc('a-dish', id.toString(), result.rev);
+      int count = 1 + int.parse(dish.rev.split('-')[0]);
+      String newRev = count.toString() + '-' + dish.rev.split('-')[1];
+      await docs.insertDoc('a-dish', dish.id.toString(),
+          {'name': dish.name, 'no': dish.no, '_deleted': true},
+          rev: newRev, newEdits: false);
     } on CouchDbException catch (e) {
       print('$e - error');
     }
@@ -94,9 +103,9 @@ class DishPublisher {
     }
   }
 
-  static Future<void> delete(int id) async {
+  static Future<void> delete(Dish dish) async {
     for (Function func in triggerEvents['delete']) {
-      await func(id);
+      await func(dish);
     }
   }
 
@@ -106,7 +115,6 @@ class DishPublisher {
     Map data = jsonDecode(databasesResponse.result);
     dishBloc = bloc;
     List result = data['result'];
-
     for (Map value in result) {
       if (value.containsKey('deleted')) {
         for (Function func in triggerEvents['sync_delete']) {

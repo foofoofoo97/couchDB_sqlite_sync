@@ -149,7 +149,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   onDismissed: (direction) {
                     //DELETE DATA
-                    dishBloc.deleteSubjectById(subject.id);
+                    dishBloc.deleteSubjectById(subject);
                   },
                   direction: _dismissDirection,
                   key: new ObjectKey(subject),
@@ -164,7 +164,7 @@ class _HomePageState extends State<HomePage> {
                             icon: Icon(Icons.close),
                             color: Colors.red,
                             onPressed: () {
-                              dishBloc.deleteSubjectById(subject.id);
+                              dishBloc.deleteSubjectById(subject);
                             },
                           ),
                           leading: InkWell(

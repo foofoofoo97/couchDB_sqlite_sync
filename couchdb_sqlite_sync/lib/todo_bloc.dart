@@ -10,7 +10,7 @@ class DishBloc {
   get subjectList => _dishController.stream;
 
   String generateRandomString(int len) {
-    var r = Random.secure();
+    var r = Random(DateTime.now().millisecond);
     const _chars = 'abcdefghijklmnopqrstuvwxyz1234567890';
     return List.generate(len, (index) => _chars[r.nextInt(_chars.length)])
         .join();
@@ -38,16 +38,16 @@ class DishBloc {
     int version = int.parse(head);
 
     version = version + 1;
-    dish.rev = version.toString() + '+' + code;
+    dish.rev = version.toString() + '-' + code;
 
     await _dishRepository.updateSubject(dish);
     await DishPublisher.update(dish);
     getDish();
   }
 
-  deleteSubjectById(int id) async {
-    _dishRepository.deleteSubjectById(id);
-    await DishPublisher.delete(id);
+  deleteSubjectById(Dish dish) async {
+    _dishRepository.deleteSubjectById(dish.id);
+    await DishPublisher.delete(dish);
     getDish();
   }
 
