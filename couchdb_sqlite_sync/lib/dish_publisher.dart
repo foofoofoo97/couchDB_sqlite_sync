@@ -39,7 +39,9 @@ class DishPublisher {
     String currentRev =
         await dishBloc.isExistingID(int.parse(value['doc']['_id']));
     if (currentRev != null) {
-      if (currentRev == dish.rev) {
+      int currentVersion = int.parse(currentRev.split('-')[0]);
+      int couchVersion = int.parse(dish.rev.split('-')[0]);
+      if (currentVersion < couchVersion) {
         dishBloc.updateSubjectSync(dish);
       }
     } else {
@@ -48,9 +50,8 @@ class DishPublisher {
   }
 
   static Future<void> deleteSqllite(Map value) async {
-    String currentRev =
-        await dishBloc.isExistingID(int.parse(value['doc']['_id']));
-    if (currentRev != null && currentRev == value['doc']['_rev']) {
+    String hasID = await dishBloc.isExistingID(int.parse(value['doc']['_id']));
+    if (hasID != null) {
       dishBloc.deleteSubjectByIdSync(int.parse(value['id']));
     }
   }
@@ -77,11 +78,7 @@ class DishPublisher {
 
   static Future<void> deleteCouchDishDB(Dish dish) async {
     try {
-      int count = 1 + int.parse(dish.rev.split('-')[0]);
-      String newRev = count.toString() + '-' + dish.rev.split('-')[1];
-      await docs.insertDoc('a-dish', dish.id.toString(),
-          {'name': dish.name, 'no': dish.no, '_deleted': true},
-          rev: newRev, newEdits: false);
+      await docs.deleteDoc('a-dish', dish.id.toString(), dish.rev);
     } on CouchDbException catch (e) {
       print('$e - error');
     }

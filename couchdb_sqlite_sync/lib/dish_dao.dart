@@ -53,8 +53,6 @@ class DishDao {
         ? result.map((item) => Dish.fromDatabaseJson(item)).toList()
         : [];
 
-    print('I am result');
-    print('end of last result');
     return subjects;
   }
 
