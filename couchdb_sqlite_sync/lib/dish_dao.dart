@@ -24,7 +24,7 @@ class DishDao {
         ? result.map((item) => Dish.fromDatabaseJson(item)).toList()
         : [];
 
-    return lastDish[0].id;
+    return lastDish.length == 0 ? 0 : lastDish[0].id;
   }
 
   //Add new
@@ -33,9 +33,21 @@ class DishDao {
     final db = await dbProvider.database;
     print(dish.rev);
     var result = await db.rawInsert(
-        'INSERT INTO $tableName(name, no, rev) VALUES("${dish.name}", ${dish.no}, "${dish.rev}")');
+        'INSERT INTO $tableName(id, data, rev) VALUES(${dish.id}, \'${dish.data}\', "${dish.rev}")');
 
     return result;
+  }
+
+  Future<Dish> getSelectedDish(int id) async {
+    final db = await dbProvider.database;
+    List<Map<String, dynamic>> result;
+
+    result = await db.query(tableName, where: 'id = ?', whereArgs: [id]);
+    List<Dish> dishes = result.isNotEmpty
+        ? result.map((item) => Dish.fromDatabaseJson(item)).toList()
+        : [];
+
+    return dishes.length == 0 ? null : dishes[0];
   }
 
   //Get All

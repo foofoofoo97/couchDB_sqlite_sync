@@ -31,10 +31,10 @@ class DishPublisher {
 
   static Future<void> updateSqllite(Map value) async {
     Dish dish = new Dish(
-        id: int.parse(value['doc']['_id']),
-        name: value['doc']['name'],
-        rev: value['doc']['_rev'],
-        no: value['doc']['no']);
+      id: int.parse(value['doc']['_id']),
+      data: value['doc']['data'],
+      rev: value['doc']['_rev'],
+    );
 
     String currentRev =
         await dishBloc.isExistingID(int.parse(value['doc']['_id']));
@@ -59,8 +59,19 @@ class DishPublisher {
   static Future<void> setCouchDishDB(Dish dish) async {
     try {
       await docs.insertDoc(
-          'a-dish', dish.id.toString(), {'name': dish.name, 'no': dish.no},
-          rev: dish.rev, newEdits: false);
+          'a-dish',
+          dish.id.toString(),
+          {
+            'data': dish.data,
+            '_revisions': {
+              "ids": [dish.rev.split('-')[1].toString()],
+              "start": int.parse(dish.rev.split('-')[0])
+            }
+          },
+          rev: dish.rev,
+          newEdits: false);
+
+      await getAllDocs();
     } on CouchDbException catch (e) {
       print('$e - error');
     }
@@ -69,8 +80,21 @@ class DishPublisher {
   static Future<void> updateCouchDishDB(Dish dish) async {
     try {
       await docs.insertDoc(
-          'a-dish', dish.id.toString(), {'name': dish.name, 'no': dish.no},
-          rev: dish.rev, newEdits: false);
+        'a-dish',
+        dish.id.toString(),
+        {
+          'data': dish.data,
+          '_revisions': {
+            "ids": [
+              dish.rev.split('-')[1].toString(),
+              dish.rev.split('-')[1].toString()
+            ],
+            "start": int.parse(dish.rev.split('-')[0])
+          }
+        },
+        rev: dish.rev,
+        newEdits: false,
+      );
     } on CouchDbException catch (e) {
       print('$e - error');
     }
@@ -82,6 +106,19 @@ class DishPublisher {
     } on CouchDbException catch (e) {
       print('$e - error');
     }
+  }
+
+  static Future<void> getDoc(int docId) async {
+    DocumentsResponse databasesResponse =
+        await docs.doc('a-dish', docId.toString());
+    print(databasesResponse.doc);
+  }
+
+  static Future<void> getAllDocs() async {
+    DatabasesResponse databasesResponse =
+        await dbs.allDocs('a-dish', includeDocs: true);
+    print(databasesResponse.result);
+    print(databasesResponse.rows);
   }
 
   //listen to changes

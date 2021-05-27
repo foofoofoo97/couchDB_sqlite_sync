@@ -8,6 +8,7 @@ class DishRepository {
   Future updateSubject(Dish dish) => dishDao.updateSubject(dish);
   Future deleteSubjectById(int id) => dishDao.deleteSubject(id);
   Future deleteAllSubject() => dishDao.deleteAllSubject();
+  Future getSeletedDish(int id) => dishDao.getSelectedDish(id);
   Future createdID() => dishDao.createdID();
   Future isExistingData(int id) => dishDao.isExistingData(id);
 }

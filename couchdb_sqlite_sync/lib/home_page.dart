@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:couchdb_sqlite_sync/pouchdb.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:couchdb_sqlite_sync/dish.dart';
-import 'package:couchdb_sqlite_sync/dish_publisher.dart';
-import 'package:couchdb_sqlite_sync/todo_bloc.dart';
+import 'package:lite_rolling_switch/lite_rolling_switch.dart';
 
 class HomePage extends StatefulWidget {
   HomePage({Key key, this.title}) : super(key: key);
@@ -13,43 +14,28 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final DishBloc dishBloc = DishBloc();
   final DismissDirection _dismissDirection = DismissDirection.horizontal;
   final nameController = TextEditingController();
   final searchController = TextEditingController();
+
   StreamSubscription subscription;
 
   @override
   void dispose() {
     subscription.cancel();
-    dishBloc.dispose();
     super.dispose();
   }
 
   @override
   void initState() {
+    PouchDB.isSql = true;
     super.initState();
-    buildStreamSubscription();
-  }
-
-  void buildStreamSubscription() {
-    subscription = DishPublisher.onChanges().asStream().listen((event) {
-      print('Data received');
-      event.listen((event) {
-        print(event.result);
-        DishPublisher.listen(event, dishBloc);
-      });
-    }, onDone: () {
-      print("Task Done");
-      subscription.cancel();
-      buildStreamSubscription();
-    }, onError: (error) {
-      print("Some Error");
-    });
+    PouchDB.buildStreamSubscription(subscription);
   }
 
   @override
   Widget build(BuildContext context) {
+    PouchDB();
     return Scaffold(
         appBar: AppBar(title: Text('Local Database')),
         body: SafeArea(
@@ -57,7 +43,24 @@ class _HomePageState extends State<HomePage> {
                 color: Colors.white,
                 padding:
                     const EdgeInsets.only(left: 2.0, right: 2.0, bottom: 2.0),
-                child: Container(child: getData()))),
+                child: Column(children: <Widget>[
+                  LiteRollingSwitch(
+                      //initial value
+                      value: PouchDB.isSql,
+                      textOn: 'SQLITE',
+                      textOff: 'COUCHDB',
+                      colorOn: Colors.blue,
+                      colorOff: Colors.green,
+                      iconOn: Icons.done,
+                      iconOff: Icons.remove_circle_outline,
+                      textSize: 12.0,
+                      onChanged: (bool state) async {
+                        setState(() {
+                          PouchDB.isSql = !PouchDB.isSql;
+                        });
+                      }),
+                  Expanded(child: getData())
+                ]))),
         bottomNavigationBar: BottomAppBar(
             color: Colors.white,
             child: Padding(
@@ -109,11 +112,16 @@ class _HomePageState extends State<HomePage> {
                                         color: Colors.white,
                                       ),
                                       onPressed: () {
-                                        final newSubject = Dish(
-                                            name: nameController.value.text,
-                                            no: 0);
-                                        if (newSubject.name.isNotEmpty) {
-                                          dishBloc.addSubject(newSubject);
+                                        //TO BE CHANGE
+                                        if (nameController
+                                            .value.text.isNotEmpty) {
+                                          Dish dish = new Dish(
+                                              data: jsonEncode({
+                                            "name":
+                                                nameController.text.toString(),
+                                            "no": 0
+                                          }));
+                                          PouchDB.insertDish(dish: dish);
                                         }
                                       }))
                             ])))))));
@@ -121,7 +129,7 @@ class _HomePageState extends State<HomePage> {
 
   getData() {
     return StreamBuilder(
-      stream: dishBloc.subjectList,
+      stream: PouchDB.dishStream,
       builder: (BuildContext context, AsyncSnapshot<List<Dish>> snapshot) {
         return getSubjectCardWidget(snapshot);
       },
@@ -135,6 +143,7 @@ class _HomePageState extends State<HomePage> {
               itemCount: snapshot.data.length,
               itemBuilder: (context, itemPosition) {
                 Dish subject = snapshot.data[itemPosition];
+
                 final Widget dismissibleCard = new Dismissible(
                   background: Container(
                     child: Padding(
@@ -149,7 +158,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   onDismissed: (direction) {
                     //DELETE DATA
-                    dishBloc.deleteSubjectById(subject);
+                    PouchDB.deleteDish(dish: subject);
                   },
                   direction: _dismissDirection,
                   key: new ObjectKey(subject),
@@ -164,23 +173,26 @@ class _HomePageState extends State<HomePage> {
                             icon: Icon(Icons.close),
                             color: Colors.red,
                             onPressed: () {
-                              dishBloc.deleteSubjectById(subject);
+                              PouchDB.deleteDish(dish: subject);
                             },
                           ),
                           leading: InkWell(
                               onTap: () {
-                                subject.no++;
-                                dishBloc.updateSubject(subject);
+                                Map data = jsonDecode(subject.data);
+                                data['no']++;
+                                subject.data = jsonEncode(data);
+                                PouchDB.updateDish(dish: subject);
                               },
                               child: Container(
                                   //decoration: BoxDecoration(),
                                   child: Padding(
                                       padding: const EdgeInsets.all(15.0),
                                       child: Text(
-                                        subject.no.toString(),
+                                        jsonDecode(subject.data)['no']
+                                            .toString(),
                                       )))),
                           title: Text(
-                            subject.name,
+                            jsonDecode(subject.data)['name'],
                             style: TextStyle(
                               fontSize: 16.5,
                               fontFamily: 'RobotoMono',

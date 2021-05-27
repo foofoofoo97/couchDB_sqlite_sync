@@ -9,7 +9,6 @@ final tableName = 'Dish';
 class DatabaseProvider {
   static final DatabaseProvider dbProvider = DatabaseProvider();
   Database _database;
-
   Future<Database> get database async {
     if (_database != null) return _database;
     _database = await createDatabase();
@@ -32,9 +31,8 @@ class DatabaseProvider {
   void initDB(Database database, int version) async {
     await database.execute("CREATE TABLE $tableName ("
         "id INTEGER PRIMARY KEY, "
-        "name TEXT, "
-        "no INTEGER, "
-        "rev TEXT"
+        "data TEXT, "
+        "rev TEXT "
         ")");
   }
 }

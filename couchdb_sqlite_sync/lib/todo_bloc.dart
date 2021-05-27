@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:couchdb_sqlite_sync/dish.dart';
 import 'package:couchdb_sqlite_sync/dish_publisher.dart';
@@ -24,10 +25,14 @@ class DishBloc {
     _dishController.sink.add(await _dishRepository.getAllSubject(query: query));
   }
 
-  addSubject(Dish dish) async {
-    dish.rev = "0-${generateRandomString(33)}";
+  addSubject(String name, int no) async {
+    int id = await _dishRepository.createdID() + 1;
+    String rev = "0-${generateRandomString(33)}";
+    Dish dish = new Dish(
+        id: id,
+        data: jsonEncode({"id": id, "name": name, "no": no, "rev": rev}),
+        rev: rev);
     await _dishRepository.insertSubject(dish);
-    dish.id = await _dishRepository.createdID();
     await DishPublisher.set(dish);
     getDish();
   }
@@ -39,6 +44,10 @@ class DishBloc {
 
     version = version + 1;
     dish.rev = version.toString() + '-' + code;
+
+    Map data = jsonDecode(dish.data);
+    data['rev'] = dish.rev;
+    dish.data = jsonEncode(data);
 
     await _dishRepository.updateSubject(dish);
     await DishPublisher.update(dish);

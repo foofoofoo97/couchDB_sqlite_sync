@@ -1,13 +1,12 @@
 class Dish {
   int id;
-  String name;
-  int no;
+  String data;
   String rev;
 
-  Dish({this.id, this.name, this.no, this.rev});
-  factory Dish.fromDatabaseJson(Map<String, dynamic> data) => Dish(
-      id: data['id'], name: data['name'], no: data['no'], rev: data['rev']);
+  Dish({this.id, this.data, this.rev});
+  factory Dish.fromDatabaseJson(Map<String, dynamic> data) =>
+      Dish(id: data['id'], data: data['data'], rev: data['rev']);
 
   Map<String, dynamic> toDatabaseJson() =>
-      {"id": this.id, "name": this.name, "no": this.no, "rev": this.rev};
+      {"id": this.id, "data": this.data, "rev": this.rev};
 }
