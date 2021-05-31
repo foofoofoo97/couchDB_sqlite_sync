@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'package:couchdb_sqlite_sync/dish.dart';
+import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 import 'package:couchdb_sqlite_sync/dish_publisher.dart';
-import 'package:couchdb_sqlite_sync/dish_repository.dart';
+import 'package:couchdb_sqlite_sync/dish_service/dish_repository.dart';
 
 class DishBloc {
   final _dishRepository = DishRepository();

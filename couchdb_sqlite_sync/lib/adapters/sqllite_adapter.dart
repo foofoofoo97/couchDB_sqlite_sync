@@ -1,7 +1,8 @@
 import 'dart:async';
-import 'package:couchdb_sqlite_sync/adapter_abstract_class.dart';
-import 'package:couchdb_sqlite_sync/dish.dart';
-import 'package:couchdb_sqlite_sync/dish_repository.dart';
+
+import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
+import 'package:couchdb_sqlite_sync/model_class/dish.dart';
+import 'package:couchdb_sqlite_sync/dish_service/dish_repository.dart';
 
 class SqliteAdapter extends Adapter {
   final _dishRepository = DishRepository();

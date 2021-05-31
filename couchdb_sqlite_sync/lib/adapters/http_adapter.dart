@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:couchdb_sqlite_sync/adapter_abstract_class.dart';
-import 'package:couchdb_sqlite_sync/dish.dart';
+import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
+import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 import 'package:couchdb/couchdb.dart';
-import 'package:couchdb_sqlite_sync/todo_bloc.dart';
 
 class HttpAdapter extends Adapter {
   //Connect
@@ -18,7 +17,6 @@ class HttpAdapter extends Adapter {
   final String dbName = 'a-dish';
   final dbs = Databases(client);
   final docs = Documents(client);
-  DishBloc dishBloc;
 
   final _dishController = StreamController<List<Dish>>.broadcast();
   get subjectList => _dishController.stream;
@@ -82,9 +80,11 @@ class HttpAdapter extends Adapter {
     return await dbs.dbInfo(dbName);
   }
 
-  //-----------------------------------------------------------------------------------------------------------------
+  //--------------------------------------------------------
+
   //BY DOCUMENT
   //PUT (INSERT)
+
   @override
   insertDish(Dish dish) async {
     try {
@@ -100,9 +100,8 @@ class HttpAdapter extends Adapter {
           },
           rev: dish.rev,
           newEdits: false);
-
-      getDish();
-    } on CouchDbException catch (e) {
+      print('ya');
+    } catch (e) {
       print('$e - error');
     }
   }
@@ -128,7 +127,7 @@ class HttpAdapter extends Adapter {
         newEdits: false,
       );
 
-      getDish();
+      //getDish();
     } on CouchDbException catch (e) {
       print('$e - error');
     }
@@ -149,7 +148,7 @@ class HttpAdapter extends Adapter {
   deleteDish(Dish dish) async {
     try {
       await docs.deleteDoc(dbName, dish.id.toString(), dish.rev);
-      getDish();
+      //getDish();
     } on CouchDbException catch (e) {
       print('$e - error');
     }

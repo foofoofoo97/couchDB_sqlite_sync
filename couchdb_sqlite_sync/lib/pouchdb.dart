@@ -3,14 +3,19 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:couchdb_sqlite_sync/adapters/http_adapter.dart';
 import 'package:couchdb_sqlite_sync/adapters/sqllite_adapter.dart';
-import 'package:couchdb_sqlite_sync/dish.dart';
+import 'package:couchdb_sqlite_sync/model_class/dish.dart';
+import 'package:couchdb_sqlite_sync/model_class/sequence_log.dart';
+import 'package:couchdb_sqlite_sync/replication_protocol/replicator.dart';
+import 'package:couchdb_sqlite_sync/sequence_service/sqlite_sequence_manager.dart';
 
 class PouchDB {
   static final SqliteAdapter sqliteAdapter = SqliteAdapter();
   static final HttpAdapter httpAdapter = HttpAdapter();
+  static final SqliteSequenceManager sqliteSequenceManager =
+      SqliteSequenceManager();
+  static final Replicator replicator = new Replicator();
   static final _dishController = StreamController<List<Dish>>.broadcast();
   static get dishStream => _dishController.stream;
-
   static bool isSql;
 
   dispose() {
@@ -24,6 +29,16 @@ class PouchDB {
         .join();
   }
 
+  PouchDB() {
+    isSql = true;
+    getDish();
+  }
+
+  static void setIsSql(bool isSqlite) {
+    isSql = isSqlite;
+    getDish();
+  }
+
   static Stream<List<Dish>> getStream({bool isSqlite}) {
     if (isSqlite) {
       return sqliteAdapter.subjectList;
@@ -33,15 +48,9 @@ class PouchDB {
   }
 
   static void getDish() async {
-    List<Dish> dishes = new List();
-
-    if (isSql) {
-      dishes = await sqliteAdapter.getAllDish();
-    } else {
-      dishes = await httpAdapter.getAllDish();
-    }
-
-    _dishController.sink.add(dishes);
+    _dishController.sink.add(isSql
+        ? await sqliteAdapter.getAllDish()
+        : await httpAdapter.getAllDish());
   }
 
   static void deleteDish({bool isSync = false, Dish dish}) async {
@@ -52,7 +61,21 @@ class PouchDB {
       }
     } else {
       await sqliteAdapter.deleteDish(dish);
-      //await httpAdapter.deleteDish(dish);
+
+      SequenceLog sequenceLog = new SequenceLog(
+          rev: dish.rev,
+          data: dish.data,
+          deleted: 'true',
+          changes: jsonEncode({
+            "changes": [
+              {"rev": dish.rev}
+            ]
+          }),
+          id: dish.id.toString());
+
+      await sqliteSequenceManager.addSequence(sequenceLog);
+
+      await httpAdapter.deleteDish(dish);
     }
 
     getDish();
@@ -69,6 +92,19 @@ class PouchDB {
       version = version + 1;
       dish.rev = version.toString() + '-' + code;
       await sqliteAdapter.updateDish(dish);
+
+      SequenceLog sequneceLog = new SequenceLog(
+          rev: dish.rev,
+          data: dish.data,
+          deleted: 'false',
+          changes: jsonEncode({
+            "changes": [
+              {"rev": dish.rev}
+            ]
+          }),
+          id: dish.id.toString());
+
+      await sqliteSequenceManager.addSequence(sequneceLog);
       await httpAdapter.updateDish(dish);
     }
 
@@ -89,10 +125,21 @@ class PouchDB {
         "rev": dish.rev
       }));
 
+      SequenceLog sequneceLog = new SequenceLog(
+          rev: dish.rev,
+          data: dish.data,
+          deleted: 'false',
+          changes: jsonEncode({
+            "changes": [
+              {"rev": dish.rev}
+            ]
+          }),
+          id: dish.id.toString());
+
       await sqliteAdapter.insertDish(dish);
+      await sqliteSequenceManager.addSequence(sequneceLog);
       await httpAdapter.insertDish(dish);
     }
-
     getDish();
   }
 
@@ -118,6 +165,8 @@ class PouchDB {
   static void buildStreamSubscription(StreamSubscription subscription) {
     subscription = httpAdapter.changesIn().asStream().listen((event) {
       event.listen((databasesResponse) {
+        replicator.trigger("couchdb", "sqlite");
+
         List results = httpAdapter.listenToEvent(databasesResponse);
         for (Map doc in results) {
           if (doc.containsKey('deleted')) {

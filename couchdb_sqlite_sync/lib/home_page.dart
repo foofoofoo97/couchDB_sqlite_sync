@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:couchdb_sqlite_sync/pouchdb.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:couchdb_sqlite_sync/dish.dart';
+import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 import 'package:lite_rolling_switch/lite_rolling_switch.dart';
 
 class HomePage extends StatefulWidget {
@@ -18,6 +18,7 @@ class _HomePageState extends State<HomePage> {
   final nameController = TextEditingController();
   final searchController = TextEditingController();
 
+  bool isSqlite;
   StreamSubscription subscription;
 
   @override
@@ -28,14 +29,14 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void initState() {
-    PouchDB.isSql = true;
-    super.initState();
+    isSqlite = true;
+    PouchDB();
     PouchDB.buildStreamSubscription(subscription);
+    super.initState();
   }
 
   @override
   Widget build(BuildContext context) {
-    PouchDB();
     return Scaffold(
         appBar: AppBar(title: Text('Local Database')),
         body: SafeArea(
@@ -46,7 +47,7 @@ class _HomePageState extends State<HomePage> {
                 child: Column(children: <Widget>[
                   LiteRollingSwitch(
                       //initial value
-                      value: PouchDB.isSql,
+                      value: isSqlite,
                       textOn: 'SQLITE',
                       textOff: 'COUCHDB',
                       colorOn: Colors.blue,
@@ -54,10 +55,9 @@ class _HomePageState extends State<HomePage> {
                       iconOn: Icons.done,
                       iconOff: Icons.remove_circle_outline,
                       textSize: 12.0,
-                      onChanged: (bool state) async {
-                        setState(() {
-                          PouchDB.isSql = !PouchDB.isSql;
-                        });
+                      onChanged: (bool state) {
+                        isSqlite = state;
+                        PouchDB.setIsSql(state);
                       }),
                   Expanded(child: getData())
                 ]))),

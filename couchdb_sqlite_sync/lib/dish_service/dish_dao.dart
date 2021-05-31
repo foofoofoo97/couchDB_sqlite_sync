@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'package:couchdb_sqlite_sync/database.dart';
-import 'package:couchdb_sqlite_sync/dish.dart';
+import 'package:couchdb_sqlite_sync/database/dish_db.dart';
+import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 
 class DishDao {
   final dbProvider = DatabaseProvider.dbProvider;

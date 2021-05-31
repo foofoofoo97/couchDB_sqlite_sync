@@ -1,5 +1,5 @@
-import 'package:couchdb_sqlite_sync/dish.dart';
-import 'package:couchdb_sqlite_sync/dish_dao.dart';
+import 'package:couchdb_sqlite_sync/model_class/dish.dart';
+import 'package:couchdb_sqlite_sync/dish_service/dish_dao.dart';
 
 class DishRepository {
   final dishDao = DishDao();

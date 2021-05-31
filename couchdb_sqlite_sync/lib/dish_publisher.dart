@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:couchdb/couchdb.dart';
-import 'package:couchdb_sqlite_sync/dish.dart';
+import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 import 'package:couchdb_sqlite_sync/todo_bloc.dart';
 
 class DishPublisher {
