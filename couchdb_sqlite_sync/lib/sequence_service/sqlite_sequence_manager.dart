@@ -48,6 +48,19 @@ class SqliteSequenceManager {
     return sequences.length == 0 ? null : sequences[0];
   }
 
+  Future<List<SequenceLog>> getSequenceById(String id) async {
+    final db = await dbProvider.database;
+    List<Map<String, dynamic>> result;
+
+    result = await db.query(sequenceTable,
+        orderBy: "seq DESC", where: 'id = ?', whereArgs: [id]);
+    List<SequenceLog> sequences = result.isNotEmpty
+        ? result.map((item) => SequenceLog.fromDatabaseJson(item)).toList()
+        : [];
+
+    return sequences;
+  }
+
   Future<List<SequenceLog>> getSequenceSince(int since) async {
     final db = await dbProvider.database;
     List<Map<String, dynamic>> result;

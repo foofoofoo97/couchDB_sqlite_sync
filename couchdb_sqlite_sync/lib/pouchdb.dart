@@ -14,6 +14,7 @@ class PouchDB {
   static final SqliteSequenceManager sqliteSequenceManager =
       SqliteSequenceManager();
   static final Replicator replicator = new Replicator();
+
   static final _dishController = StreamController<List<Dish>>.broadcast();
   static get dishStream => _dishController.stream;
   static bool isSql;
@@ -39,13 +40,13 @@ class PouchDB {
     getDish();
   }
 
-  static Stream<List<Dish>> getStream({bool isSqlite}) {
-    if (isSqlite) {
-      return sqliteAdapter.subjectList;
-    } else {
-      return httpAdapter.subjectList;
-    }
-  }
+  // static Stream<List<Dish>> getStream({bool isSqlite}) {
+  //   if (isSqlite) {
+  //     return sqliteAdapter.subjectList;
+  //   } else {
+  //     return httpAdapter.subjectList;
+  //   }
+  // }
 
   static void getDish() async {
     _dishController.sink.add(isSql
@@ -61,7 +62,6 @@ class PouchDB {
       }
     } else {
       await sqliteAdapter.deleteDish(dish);
-
       SequenceLog sequenceLog = new SequenceLog(
           rev: dish.rev,
           data: dish.data,
@@ -74,24 +74,42 @@ class PouchDB {
           id: dish.id.toString());
 
       await sqliteSequenceManager.addSequence(sequenceLog);
+      await replicator.trigger("sqlite", "couchdb");
 
-      await httpAdapter.deleteDish(dish);
+      //await await httpAdapter.deleteDish(dish);
     }
 
     getDish();
   }
 
-  static void updateDish({bool isSync = false, Dish dish}) async {
+  static void updateDish({bool isSync = false, Dish currdish}) async {
     if (isSync) {
+      //update revisions
+      Dish dish = await sqliteAdapter.getSelectedDish(currdish.id);
+
+      dish.data = currdish.data;
+
+      Map revisions = jsonDecode(dish.revisions);
+      revisions['_revisions'].insert(0, dish.rev.split('-')[1]);
+      dish.revisions = jsonEncode(revisions);
+
       await sqliteAdapter.updateDish(dish);
     } else {
+      //update rev
+      Dish dish = await sqliteAdapter.getSelectedDish(currdish.id);
+
+      dish.data = currdish.data;
+
       String head = dish.rev.split('-')[0];
       String code = dish.rev.split('-')[1];
       int version = int.parse(head);
-
       version = version + 1;
       dish.rev = version.toString() + '-' + code;
-      await sqliteAdapter.updateDish(dish);
+
+      //update revisions
+      Map revisions = jsonDecode(dish.revisions);
+      revisions['_revisions'].insert(0, dish.rev.split('-')[1]);
+      dish.revisions = jsonEncode(revisions);
 
       SequenceLog sequneceLog = new SequenceLog(
           rev: dish.rev,
@@ -104,8 +122,10 @@ class PouchDB {
           }),
           id: dish.id.toString());
 
+      //update sqlite dish
+      await sqliteAdapter.updateDish(dish);
       await sqliteSequenceManager.addSequence(sequneceLog);
-      await httpAdapter.updateDish(dish);
+      await replicator.trigger("sqlite", "couchdb");
     }
 
     getDish();
@@ -113,17 +133,17 @@ class PouchDB {
 
   static void insertDish({bool isSync = false, Dish dish}) async {
     if (isSync) {
+      dish.revisions = jsonEncode({
+        "_revisions": [dish.rev.split('-')[1]]
+      });
+
       sqliteAdapter.insertDish(dish);
     } else {
       dish.id = await sqliteAdapter.createdID() + 1;
       dish.rev = "0-${generateRandomString(33)}";
-      Map data = jsonDecode(dish.data);
-      dish.data = jsonEncode(({
-        "id": dish.id,
-        "name": data["name"],
-        "no": data['no'],
-        "rev": dish.rev
-      }));
+      dish.revisions = jsonEncode({
+        "_revisions": [dish.rev.split('-')[1]]
+      });
 
       SequenceLog sequneceLog = new SequenceLog(
           rev: dish.rev,
@@ -138,7 +158,7 @@ class PouchDB {
 
       await sqliteAdapter.insertDish(dish);
       await sqliteSequenceManager.addSequence(sequneceLog);
-      await httpAdapter.insertDish(dish);
+      await replicator.trigger("sqlite", "couchdb");
     }
     getDish();
   }
@@ -155,7 +175,7 @@ class PouchDB {
       int currentVersion = int.parse(currentRev.split('-')[0]);
       int couchVersion = int.parse(dish.rev.split('-')[0]);
       if (currentVersion < couchVersion) {
-        updateDish(isSync: true, dish: dish);
+        updateDish(isSync: true, currdish: dish);
       }
     } else {
       insertDish(isSync: true, dish: dish);
@@ -165,7 +185,7 @@ class PouchDB {
   static void buildStreamSubscription(StreamSubscription subscription) {
     subscription = httpAdapter.changesIn().asStream().listen((event) {
       event.listen((databasesResponse) {
-        replicator.trigger("couchdb", "sqlite");
+        //replicator.trigger("couchdb", "sqlite");
 
         List results = httpAdapter.listenToEvent(databasesResponse);
         for (Map doc in results) {

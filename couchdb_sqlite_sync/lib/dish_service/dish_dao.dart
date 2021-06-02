@@ -3,7 +3,7 @@ import 'package:couchdb_sqlite_sync/database/dish_db.dart';
 import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 
 class DishDao {
-  final dbProvider = DatabaseProvider.dbProvider;
+  final dbProvider = DishDatabaseProvider.dbProvider;
 
   Future<String> isExistingData(int id) async {
     final db = await dbProvider.database;
@@ -31,9 +31,8 @@ class DishDao {
   //Create subject
   Future<int> createSubject(Dish dish) async {
     final db = await dbProvider.database;
-    print(dish.rev);
     var result = await db.rawInsert(
-        'INSERT INTO $tableName(id, data, rev) VALUES(${dish.id}, \'${dish.data}\', "${dish.rev}")');
+        'INSERT INTO $tableName(id, data, rev, revisions) VALUES(${dish.id}, \'${dish.data}\', "${dish.rev}", \'${dish.revisions}\')');
 
     return result;
   }

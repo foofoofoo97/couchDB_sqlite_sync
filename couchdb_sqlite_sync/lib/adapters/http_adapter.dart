@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
 import 'package:couchdb_sqlite_sync/model_class/dish.dart';
@@ -45,6 +46,36 @@ class HttpAdapter extends Adapter {
     return data['result'];
   }
 
+  //POST/ insert BULKDOCS
+  insertBulkDocs(List<Object> bulkDocs) async {
+    DatabasesResponse databasesResponse =
+        await dbs.insertBulkDocs(dbName, bulkDocs, newEdits: false);
+    return databasesResponse;
+  }
+
+  //Get documents with revsdifference
+  revsDifferentWithCouchDb(Map<String, List<String>> revs) async {
+    ApiResponse result = await client.post('$dbName/_revs_diff', body: revs);
+    Map<String, Map<String, List<String>>> revsDiff = result.json.keys
+            .every(RegExp('[a-z0-9-]{1,36}').hasMatch)
+        ? result.json?.map((k, v) =>
+            MapEntry<String, Map<String, List<String>>>(
+                k.toString(),
+                (v as Map<String, Object>)?.map((k, v) =>
+                    MapEntry<String, List<String>>(
+                        k,
+                        (v as List<Object>)
+                            ?.map((e) => e as String)
+                            ?.toList()))))
+        : null;
+
+    return revsDiff;
+  }
+
+  ensureFullCommit() async {
+    await dbs.ensureFullCommit(dbName);
+  }
+
   //GET ALL DOCS
   @override
   getAllDish() async {
@@ -68,13 +99,6 @@ class HttpAdapter extends Adapter {
     return await dbs.bulkDocs(dbName, docs, revs: revs);
   }
 
-  //POST (INSERT BULKDOCS)
-  insertBulkDocs(List<Object> docs,
-      {bool newEdits = true, Map<String, String> headers}) async {
-    return await dbs.insertBulkDocs(dbName, docs,
-        newEdits: newEdits, headers: headers);
-  }
-
   //DB INFO
   dbInfo(String dbName) async {
     return await dbs.dbInfo(dbName);
@@ -84,7 +108,6 @@ class HttpAdapter extends Adapter {
 
   //BY DOCUMENT
   //PUT (INSERT)
-
   @override
   insertDish(Dish dish) async {
     try {
@@ -140,7 +163,13 @@ class HttpAdapter extends Adapter {
       dbName,
       docId.toString(),
     );
-    return documentsResponse.doc['data'];
+    Dish dish = new Dish(
+        id: int.parse(documentsResponse.id),
+        data: documentsResponse.doc['data'],
+        rev: documentsResponse.rev,
+        revisions: jsonEncode(documentsResponse.revisions));
+    print(documentsResponse.revisions);
+    return dish;
   }
 
   //DELETE DOC
@@ -150,6 +179,15 @@ class HttpAdapter extends Adapter {
       await docs.deleteDoc(dbName, dish.id.toString(), dish.rev);
       //getDish();
     } on CouchDbException catch (e) {
+      print('$e - error');
+    }
+  }
+
+  insertReplicationLog(
+      {String id, String rev, Map<String, Object> body}) async {
+    try {
+      await docs.insertDoc(dbName, id, body, rev: rev, newEdits: false);
+    } catch (e) {
       print('$e - error');
     }
   }

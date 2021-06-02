@@ -181,7 +181,7 @@ class _HomePageState extends State<HomePage> {
                                 Map data = jsonDecode(subject.data);
                                 data['no']++;
                                 subject.data = jsonEncode(data);
-                                PouchDB.updateDish(dish: subject);
+                                PouchDB.updateDish(currdish: subject);
                               },
                               child: Container(
                                   //decoration: BoxDecoration(),

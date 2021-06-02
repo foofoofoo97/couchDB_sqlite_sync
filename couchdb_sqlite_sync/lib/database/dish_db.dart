@@ -6,8 +6,8 @@ import 'package:sqflite/sqflite.dart';
 
 final tableName = 'Dish';
 
-class DatabaseProvider {
-  static final DatabaseProvider dbProvider = DatabaseProvider();
+class DishDatabaseProvider {
+  static final DishDatabaseProvider dbProvider = DishDatabaseProvider();
   Database _database;
   Future<Database> get database async {
     if (_database != null) return _database;
@@ -32,7 +32,8 @@ class DatabaseProvider {
     await database.execute("CREATE TABLE $tableName ("
         "id INTEGER PRIMARY KEY, "
         "data TEXT, "
-        "rev TEXT "
+        "rev TEXT, "
+        "revisions TEXT"
         ")");
   }
 }
