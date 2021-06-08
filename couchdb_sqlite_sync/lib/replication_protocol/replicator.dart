@@ -4,8 +4,10 @@ import 'dart:math';
 import 'package:couchdb/couchdb.dart';
 import 'package:couchdb_sqlite_sync/adapters/http_adapter.dart';
 import 'package:couchdb_sqlite_sync/adapters/sqllite_adapter.dart';
+import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 import 'package:couchdb_sqlite_sync/model_class/sequence_log.dart';
 import 'package:couchdb_sqlite_sync/sequence_service/sqlite_sequence_manager.dart';
+import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 
 class Replicator {
@@ -47,14 +49,14 @@ class Replicator {
         .join();
   }
 
-  trigger(String source, String target) async {
-    this.source = source;
+  trigger(String srce, String target) async {
+    this.source = srce;
     this.target = target;
 
-    await getFeedUpperBound();
     await getReplicationLog();
+    await getSourceUpperBound(srce);
 
-    switch (source) {
+    switch (srce) {
       case 'couchdb':
         await replicateFromCouchDb();
         break;
@@ -63,25 +65,31 @@ class Replicator {
         await replicateFromSqlite();
         break;
     }
-
+    await getTargetUpperBound(srce);
     await writeReplicationLog();
   }
 
-  Future<void> getFeedUpperBound() async {
+  Future<void> getSourceUpperBound(String source) async {
     if (source == "couchdb") {
-      targetUpperBound =
-          (await sqliteSequenceManager.getUpdateSeq()).toString();
       sourceUpperBound = await getCouchDBUpperBound();
     } else {
       sourceUpperBound =
           (await sqliteSequenceManager.getUpdateSeq()).toString();
+    }
+  }
+
+  Future<void> getTargetUpperBound(String source) async {
+    if (source == "couchdb") {
+      targetUpperBound =
+          (await sqliteSequenceManager.getUpdateSeq()).toString();
+    } else {
       targetUpperBound = await getCouchDBUpperBound();
     }
   }
 
   Future<String> getCouchDBUpperBound() async {
     DatabasesResponse databasesResponse = await dbs.dbInfo(dbName);
-    return databasesResponse.updateSeq.split('-')[0];
+    return databasesResponse.updateSeq;
   }
 
   Future<void> getReplicationLog() async {
@@ -89,6 +97,7 @@ class Replicator {
       sourceLastSeq = "0";
       targetLastSeq = "0";
       version = 0;
+
       DocumentsResponse document = await docs.doc(dbName, "_local/$uuid");
 
       List replicatorHistory = document.doc['history'];
@@ -131,22 +140,108 @@ class Replicator {
   //source = CouchDB
   //target = Sqlite
   Future<void> replicateFromCouchDb() async {
-    dbs
-        .changesIn(dbName,
-            feed: 'normal',
-            since: sourceLastSeq,
-            style: "all_docs",
-            heartbeat: 10000)
-        .asStream()
-        .listen((event) {
-      event.listen((databasesResponse) {
-        return jsonDecode(databasesResponse.result)['result'];
-      }, onDone: () {
-        print("Task Done");
-      }, onError: (error) {
-        print("Some Error");
-      });
+    print('i am here replicater');
+    print(sourceLastSeq);
+
+    final streamRes = await Dio().get<ResponseBody>(
+        'https://sync-dev.feedmeapi.com/a-dish/_changes?descending=false&feed=normal&heartbeat=10000&since=$sourceLastSeq&style=all_docs',
+        options: Options(responseType: ResponseType.stream));
+    streamRes.data.stream.listen((event) async {
+      String res = utf8.decode(event);
+      print(res);
+      print(jsonDecode(res)['results']);
+      List result = jsonDecode(res)['results'];
+      if (result != null && result.length > 0) {
+        print(result.first);
+        Map<String, dynamic> revs = new Map();
+        for (Map log in result) {
+          revs.putIfAbsent(log['id'], () => {});
+          revs[log['id']].putIfAbsent('_revisions', () => []);
+          print('deleted');
+          print(log['deleted']);
+          revs[log['id']]
+              .putIfAbsent('_deleted', () => log['deleted'] ?? false);
+          for (Map value in log['changes']) {
+            revs[log['id']]['_revisions'].add(value['rev']);
+          }
+        }
+
+        //Get ids to replicate
+        Map revsDiff = await sqliteAdapter.revsDifferentWithSqlite(revs);
+        await httpAdapter.getBulkDocs(revsDiff['missing']);
+        print(revsDiff['deleted']);
+        for (String id in revsDiff['deleted'].keys) {
+          Dish dish = await sqliteAdapter.getSelectedDish(int.parse(id));
+          SequenceLog sequenceLog = new SequenceLog(
+              rev: revsDiff['deleted'][id],
+              data: dish.data,
+              deleted: 'true',
+              changes: jsonEncode({
+                "changes": [
+                  {"rev": revsDiff['deleted'][id]}
+                ]
+              }),
+              id: dish.id.toString());
+          await sqliteAdapter.deleteDish(dish);
+          await sqliteSequenceManager.addSequence(sequenceLog);
+        }
+      }
     });
+    // dbs
+    //     .changesIn(dbName,
+    //         feed: 'normal',
+    //         since: sourceLastSeq,
+    //         descending: false,
+    //         style: "all_docs",
+    //         heartbeat: 10000)
+    //     .asStream()
+    //     .listen((event) {
+    //   event.listen((databasesResponse) async {
+    //     List result = jsonDecode(databasesResponse.result)['result'];
+    //     print('I got result');
+    //     print(result);
+
+    //     if (result != null && result.length > 0) {
+    //       print(result.first);
+    //       Map<String, dynamic> revs = new Map();
+    //       for (Map log in result) {
+    //         revs.putIfAbsent(log['id'], () => {});
+    //         revs[log['id']].putIfAbsent('_revisions', () => []);
+    //         print('deleted');
+    //         print(log['deleted']);
+    //         revs[log['id']]
+    //             .putIfAbsent('_deleted', () => log['deleted'] ?? false);
+    //         for (Map value in log['changes']) {
+    //           revs[log['id']]['_revisions'].add(value['rev']);
+    //         }
+    //       }
+
+    //       //Get ids to replicate
+    //       Map revsDiff = await sqliteAdapter.revsDifferentWithSqlite(revs);
+    //       await httpAdapter.getBulkDocs(revsDiff['missing']);
+    //       print(revsDiff['deleted']);
+    //       for (String id in revsDiff['deleted'].keys) {
+    //         Dish dish = await sqliteAdapter.getSelectedDish(int.parse(id));
+    //         SequenceLog sequenceLog = new SequenceLog(
+    //             rev: revsDiff['deleted'][id],
+    //             data: dish.data,
+    //             deleted: 'true',
+    //             changes: jsonEncode({
+    //               "changes": [
+    //                 {"rev": revsDiff['deleted'][id]}
+    //               ]
+    //             }),
+    //             id: dish.id.toString());
+    //         await sqliteAdapter.deleteDish(dish);
+    //         await sqliteSequenceManager.addSequence(sequenceLog);
+    //       }
+    //     }
+    //   }, onDone: () {
+    //     print("Task Done");
+    //   }, onError: (error) {
+    //     print("Some Error");
+    //   });
+    // });
   }
 
   //source = Sqlite

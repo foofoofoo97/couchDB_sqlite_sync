@@ -185,17 +185,18 @@ class PouchDB {
   static void buildStreamSubscription(StreamSubscription subscription) {
     subscription = httpAdapter.changesIn().asStream().listen((event) {
       event.listen((databasesResponse) {
-        //replicator.trigger("couchdb", "sqlite");
+        replicator.trigger("couchdb", "sqlite");
+        getDish();
 
-        List results = httpAdapter.listenToEvent(databasesResponse);
-        for (Map doc in results) {
-          if (doc.containsKey('deleted')) {
-            deleteDish(
-                isSync: true, dish: Dish(id: int.parse(doc['doc']['_id'])));
-          } else {
-            updateSyncing(doc);
-          }
-        }
+        // List results = httpAdapter.listenToEvent(databasesResponse);
+        // for (Map doc in results) {
+        //   if (doc.containsKey('deleted')) {
+        //     deleteDish(
+        //         isSync: true, dish: Dish(id: int.parse(doc['doc']['_id'])));
+        //   } else {
+        //     updateSyncing(doc);
+        //   }
+        // }
       });
     }, onDone: () {
       print("Task Done");

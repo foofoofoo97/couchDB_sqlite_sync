@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:convert';
 import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
 import 'package:couchdb_sqlite_sync/model_class/dish.dart';
@@ -190,5 +189,23 @@ class HttpAdapter extends Adapter {
     } catch (e) {
       print('$e - error');
     }
+  }
+
+  getBulkDocs(Map missingRevs) async {
+    List<Dish> dishes = new List();
+    for (String id in missingRevs.keys) {
+      DocumentsResponse documentsResponse =
+          await docs.doc(dbName, id, revs: true, latest: true);
+
+      Dish dish = new Dish();
+      dish.data = documentsResponse.doc['data'];
+      dish.id = int.parse(id);
+      dish.rev = documentsResponse.doc['_rev'];
+      dish.revisions =
+          jsonEncode({'_revisions': documentsResponse.revisions['ids']});
+      dishes.add(dish);
+    }
+
+    return dishes;
   }
 }

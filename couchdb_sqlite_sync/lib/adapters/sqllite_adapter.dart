@@ -43,7 +43,6 @@ class SqliteAdapter extends Adapter {
   @override
   deleteDish(Dish dish) async {
     await _dishRepository.deleteSubjectById(dish.id);
-    print('deleted');
     //getDish();
   }
 
@@ -59,6 +58,44 @@ class SqliteAdapter extends Adapter {
 
   isExistingID(int id) async {
     return await _dishRepository.isExistingData(id);
+  }
+
+  revsDifferentWithSqlite(Map<String, dynamic> revs) async {
+    Map missingRevs = new Map();
+    Map deletedRevs = new Map();
+    for (String id in revs.keys) {
+      Dish dish = await _dishRepository.getSeletedDish(int.parse(id));
+      List changedRevs = revs[id]['_revisions'];
+      if (dish != null && changedRevs[0] != dish.rev) {
+        print(dish.data);
+        if (revs[id]['_deleted'] == true) {
+          print('yes');
+          deletedRevs.putIfAbsent(id, () => revs[id]['_revisions'][0]);
+        } else {
+          List revisions = jsonDecode(dish.revisions)['_revisions'];
+          print('check revisions');
+          print(revisions);
+          for (String rev in changedRevs) {
+            print(revisions.contains(rev));
+            if (!revisions.contains(rev)) {
+              missingRevs.putIfAbsent(id, () => []);
+              missingRevs[id].add(rev);
+            }
+          }
+        }
+      } else {
+        if (revs[id]['_deleted'] == false) {
+          missingRevs.putIfAbsent(id, () => []);
+          missingRevs[id].addAll(revs[id]['_revisions']);
+        }
+      }
+    }
+
+    return {'missing': missingRevs, 'deleted': deletedRevs};
+  }
+
+  deleteByID(String id) async {
+    await _dishRepository.deleteSubjectById(int.parse(id));
   }
 
   getBulkDocs(Map<String, Map<String, List<String>>> revsDiff) async {
