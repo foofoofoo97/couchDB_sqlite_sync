@@ -45,20 +45,38 @@ class _HomePageState extends State<HomePage> {
                 padding:
                     const EdgeInsets.only(left: 2.0, right: 2.0, bottom: 2.0),
                 child: Column(children: <Widget>[
-                  LiteRollingSwitch(
-                      //initial value
-                      value: isSqlite,
-                      textOn: 'SQLITE',
-                      textOff: 'COUCHDB',
-                      colorOn: Colors.blue,
-                      colorOff: Colors.green,
-                      iconOn: Icons.done,
-                      iconOff: Icons.remove_circle_outline,
-                      textSize: 12.0,
-                      onChanged: (bool state) {
-                        isSqlite = state;
-                        PouchDB.setIsSql(state);
-                      }),
+                  SizedBox(
+                    height: 8.0,
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      LiteRollingSwitch(
+                          //initial value
+                          value: isSqlite,
+                          textOn: 'SQLITE',
+                          textOff: 'COUCHDB',
+                          colorOn: Colors.blue,
+                          colorOff: Colors.green,
+                          iconOn: Icons.done,
+                          iconOff: Icons.remove_circle_outline,
+                          textSize: 12.0,
+                          onChanged: (bool state) {
+                            isSqlite = state;
+                            PouchDB.setIsSql(state);
+                          }),
+                      SizedBox(
+                        width: 20,
+                      ),
+                      FlatButton(
+                        child: Text('COUCH SYNC'),
+                        color: Colors.orange,
+                        onPressed: () {
+                          PouchDB.triggerReplicationFromCouchToSql();
+                        },
+                      )
+                    ],
+                  ),
                   Expanded(child: getData())
                 ]))),
         bottomNavigationBar: BottomAppBar(

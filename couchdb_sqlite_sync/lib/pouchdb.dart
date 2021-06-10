@@ -5,7 +5,7 @@ import 'package:couchdb_sqlite_sync/adapters/http_adapter.dart';
 import 'package:couchdb_sqlite_sync/adapters/sqllite_adapter.dart';
 import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 import 'package:couchdb_sqlite_sync/model_class/sequence_log.dart';
-import 'package:couchdb_sqlite_sync/replication_protocol/replicator.dart';
+import 'package:couchdb_sqlite_sync/replication_protocol/main_replicator.dart';
 import 'package:couchdb_sqlite_sync/sequence_service/sqlite_sequence_manager.dart';
 
 class PouchDB {
@@ -13,7 +13,6 @@ class PouchDB {
   static final HttpAdapter httpAdapter = HttpAdapter();
   static final SqliteSequenceManager sqliteSequenceManager =
       SqliteSequenceManager();
-  static final Replicator replicator = new Replicator();
 
   static final _dishController = StreamController<List<Dish>>.broadcast();
   static get dishStream => _dishController.stream;
@@ -74,7 +73,9 @@ class PouchDB {
           id: dish.id.toString());
 
       await sqliteSequenceManager.addSequence(sequenceLog);
-      await replicator.trigger("sqlite", "couchdb");
+
+      MainReplicator replicator = MainReplicator();
+      await replicator.replicateFromSqlite();
 
       //await await httpAdapter.deleteDish(dish);
     }
@@ -125,7 +126,9 @@ class PouchDB {
       //update sqlite dish
       await sqliteAdapter.updateDish(dish);
       await sqliteSequenceManager.addSequence(sequneceLog);
-      await replicator.trigger("sqlite", "couchdb");
+
+      MainReplicator replicator = MainReplicator();
+      await replicator.replicateFromSqlite();
     }
 
     getDish();
@@ -158,7 +161,9 @@ class PouchDB {
 
       await sqliteAdapter.insertDish(dish);
       await sqliteSequenceManager.addSequence(sequneceLog);
-      await replicator.trigger("sqlite", "couchdb");
+
+      MainReplicator replicator = MainReplicator();
+      await replicator.replicateFromSqlite();
     }
     getDish();
   }
@@ -182,21 +187,28 @@ class PouchDB {
     }
   }
 
+  static void triggerReplicationFromCouchToSql() async {
+    MainReplicator replicator = MainReplicator();
+    await replicator.replicateFromCouchDB();
+    getDish();
+  }
+
   static void buildStreamSubscription(StreamSubscription subscription) {
     subscription = httpAdapter.changesIn().asStream().listen((event) {
-      event.listen((databasesResponse) {
-        replicator.trigger("couchdb", "sqlite");
+      event.listen((databasesResponse) async {
+        MainReplicator replicator = new MainReplicator();
+        await replicator.replicateFromCouchDB();
         getDish();
 
-        // List results = httpAdapter.listenToEvent(databasesResponse);
-        // for (Map doc in results) {
-        //   if (doc.containsKey('deleted')) {
-        //     deleteDish(
-        //         isSync: true, dish: Dish(id: int.parse(doc['doc']['_id'])));
-        //   } else {
-        //     updateSyncing(doc);
-        //   }
-        // }
+        List results = httpAdapter.listenToEvent(databasesResponse);
+        for (Map doc in results) {
+          if (doc.containsKey('deleted')) {
+            deleteDish(
+                isSync: true, dish: Dish(id: int.parse(doc['doc']['_id'])));
+          } else {
+            updateSyncing(doc);
+          }
+        }
       });
     }, onDone: () {
       print("Task Done");

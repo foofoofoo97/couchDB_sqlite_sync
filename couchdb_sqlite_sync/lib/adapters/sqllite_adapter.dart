@@ -61,37 +61,36 @@ class SqliteAdapter extends Adapter {
   }
 
   revsDifferentWithSqlite(Map<String, dynamic> revs) async {
-    Map missingRevs = new Map();
+    Map updateRevs = new Map();
+    Map insertRevs = new Map();
     Map deletedRevs = new Map();
     for (String id in revs.keys) {
       Dish dish = await _dishRepository.getSeletedDish(int.parse(id));
       List changedRevs = revs[id]['_revisions'];
-      if (dish != null && changedRevs[0] != dish.rev) {
-        print(dish.data);
-        if (revs[id]['_deleted'] == true) {
-          print('yes');
-          deletedRevs.putIfAbsent(id, () => revs[id]['_revisions'][0]);
-        } else {
-          List revisions = jsonDecode(dish.revisions)['_revisions'];
-          print('check revisions');
-          print(revisions);
-          for (String rev in changedRevs) {
-            print(revisions.contains(rev));
-            if (!revisions.contains(rev)) {
-              missingRevs.putIfAbsent(id, () => []);
-              missingRevs[id].add(rev);
+      if (dish != null) {
+        if (changedRevs[0] != dish.rev) {
+          if (revs[id]['_deleted'] == true) {
+            deletedRevs.putIfAbsent(id, () => revs[id]['_revisions'][0]);
+          } else {
+            List revisions = jsonDecode(dish.revisions)['_revisions'];
+            for (String rev in changedRevs) {
+              print(revisions.contains(rev));
+              if (!revisions.contains(rev)) {
+                updateRevs.putIfAbsent(id, () => []);
+                updateRevs[id].add(rev);
+              }
             }
           }
         }
       } else {
         if (revs[id]['_deleted'] == false) {
-          missingRevs.putIfAbsent(id, () => []);
-          missingRevs[id].addAll(revs[id]['_revisions']);
+          insertRevs.putIfAbsent(id, () => []);
+          insertRevs[id].addAll(revs[id]['_revisions']);
         }
       }
     }
 
-    return {'missing': missingRevs, 'deleted': deletedRevs};
+    return {'update': updateRevs, 'insert': insertRevs, 'deleted': deletedRevs};
   }
 
   deleteByID(String id) async {
@@ -104,9 +103,12 @@ class SqliteAdapter extends Adapter {
       Dish dish = await getSelectedDish(int.parse(key));
       //check whether it is deleted
       if (dish == null) {
-        dish = new Dish(id: int.parse(key), rev: revsDiff[key]['missing'][0]);
-        HttpAdapter httpAdapter = new HttpAdapter();
-        await httpAdapter.deleteDish(dish);
+        // print('to be deleted');
+        // print(key);
+        // print(revsDiff[key]['missing'][1]);
+        // dish = new Dish(id: int.parse(key), rev: revsDiff[key]['missing'][1]);
+        // HttpAdapter httpAdapter = new HttpAdapter();
+        // await httpAdapter.deleteDish(dish);
 
         // List<SequenceLog> sequences =
         //     await sqliteSequenceManager.getSequenceById(key);
