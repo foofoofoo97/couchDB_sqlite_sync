@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:couchdb_sqlite_sync/pouchdb.dart';
+import 'package:couchdb_sqlite_sync/replication_protocol/synchronizer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:couchdb_sqlite_sync/model_class/dish.dart';
@@ -31,7 +32,8 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     isSqlite = true;
     PouchDB();
-    PouchDB.buildStreamSubscription(subscription);
+    Sychronizer();
+    // PouchDB.buildStreamSubscription(subscription);
     super.initState();
   }
 

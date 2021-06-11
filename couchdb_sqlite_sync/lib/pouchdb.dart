@@ -74,8 +74,8 @@ class PouchDB {
 
       await sqliteSequenceManager.addSequence(sequenceLog);
 
-      MainReplicator replicator = MainReplicator();
-      await replicator.replicateFromSqlite();
+      // MainReplicator replicator = MainReplicator();
+      // await replicator.replicateFromSqlite();
 
       //await await httpAdapter.deleteDish(dish);
     }
@@ -127,8 +127,8 @@ class PouchDB {
       await sqliteAdapter.updateDish(dish);
       await sqliteSequenceManager.addSequence(sequneceLog);
 
-      MainReplicator replicator = MainReplicator();
-      await replicator.replicateFromSqlite();
+      // MainReplicator replicator = MainReplicator();
+      // await replicator.replicateFromSqlite();
     }
 
     getDish();
@@ -162,8 +162,8 @@ class PouchDB {
       await sqliteAdapter.insertDish(dish);
       await sqliteSequenceManager.addSequence(sequneceLog);
 
-      MainReplicator replicator = MainReplicator();
-      await replicator.replicateFromSqlite();
+      // MainReplicator replicator = MainReplicator();
+      // await replicator.replicateFromSqlite();
     }
     getDish();
   }
@@ -188,8 +188,8 @@ class PouchDB {
   }
 
   static void triggerReplicationFromCouchToSql() async {
-    MainReplicator replicator = MainReplicator();
-    await replicator.replicateFromCouchDB();
+    // MainReplicator replicator = MainReplicator();
+    // await replicator.replicateFromCouchDB();
     getDish();
   }
 
@@ -200,15 +200,15 @@ class PouchDB {
         await replicator.replicateFromCouchDB();
         getDish();
 
-        List results = httpAdapter.listenToEvent(databasesResponse);
-        for (Map doc in results) {
-          if (doc.containsKey('deleted')) {
-            deleteDish(
-                isSync: true, dish: Dish(id: int.parse(doc['doc']['_id'])));
-          } else {
-            updateSyncing(doc);
-          }
-        }
+        // List results = httpAdapter.listenToEvent(databasesResponse);
+        // for (Map doc in results) {
+        //   if (doc.containsKey('deleted')) {
+        //     deleteDish(
+        //         isSync: true, dish: Dish(id: int.parse(doc['doc']['_id'])));
+        //   } else {
+        //     updateSyncing(doc);
+        //   }
+        // }
       });
     }, onDone: () {
       print("Task Done");

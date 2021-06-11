@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
-import 'package:couchdb_sqlite_sync/adapters/http_adapter.dart';
 import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 import 'package:couchdb_sqlite_sync/dish_service/dish_repository.dart';
 import 'package:couchdb_sqlite_sync/sequence_service/sqlite_sequence_manager.dart';
@@ -9,6 +8,7 @@ class SqliteAdapter extends Adapter {
   final _dishRepository = DishRepository();
   final SqliteSequenceManager sqliteSequenceManager =
       new SqliteSequenceManager();
+
   // final _dishController = StreamController<List<Dish>>.broadcast();
   //get subjectList => _dishController.stream;
 

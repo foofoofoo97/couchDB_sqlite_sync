@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
 import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 import 'package:couchdb/couchdb.dart';
+import 'package:dio/dio.dart';
 
 class HttpAdapter extends Adapter {
   //Connect
@@ -73,6 +74,14 @@ class HttpAdapter extends Adapter {
 
   ensureFullCommit() async {
     await dbs.ensureFullCommit(dbName);
+  }
+
+  changesSince(String couchDbLastSeq) async {
+    var streamRes = await Dio().get<ResponseBody>(
+        'https://sync-dev.feedmeapi.com/a-dish/_changes?descending=false&feed=normal&heartbeat=10000&since=$couchDbLastSeq&style=all_docs&descending=true',
+        options: Options(responseType: ResponseType.stream));
+
+    return streamRes.data.stream;
   }
 
   //GET ALL DOCS
