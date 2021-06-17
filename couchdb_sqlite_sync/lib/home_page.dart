@@ -1,11 +1,8 @@
-import 'dart:async';
 import 'dart:convert';
-import 'package:couchdb_sqlite_sync/pouchdb.dart';
-import 'package:couchdb_sqlite_sync/replication_protocol/synchronizer.dart';
+import 'package:couchdb_sqlite_sync/dish_stream.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:couchdb_sqlite_sync/model_class/dish.dart';
-import 'package:lite_rolling_switch/lite_rolling_switch.dart';
 
 class HomePage extends StatefulWidget {
   HomePage({Key key, this.title}) : super(key: key);
@@ -20,20 +17,18 @@ class _HomePageState extends State<HomePage> {
   final searchController = TextEditingController();
 
   bool isSqlite;
-  StreamSubscription subscription;
+  bool isSync;
 
   @override
   void dispose() {
-    subscription.cancel();
     super.dispose();
   }
 
   @override
   void initState() {
     isSqlite = true;
-    PouchDB();
-    Sychronizer();
-    // PouchDB.buildStreamSubscription(subscription);
+    isSync = true;
+    DishStream(isSqlite: isSqlite, isSyc: isSync);
     super.initState();
   }
 
@@ -53,30 +48,46 @@ class _HomePageState extends State<HomePage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      LiteRollingSwitch(
-                          //initial value
-                          value: isSqlite,
-                          textOn: 'SQLITE',
-                          textOff: 'COUCHDB',
-                          colorOn: Colors.blue,
-                          colorOff: Colors.green,
-                          iconOn: Icons.done,
-                          iconOff: Icons.remove_circle_outline,
-                          textSize: 12.0,
-                          onChanged: (bool state) {
-                            isSqlite = state;
-                            PouchDB.setIsSql(state);
-                          }),
+                      FlatButton(
+                        child:
+                            Text('${isSqlite == true ? 'SQLITE' : 'COUCHDB'}'),
+                        color: Colors.lightGreenAccent,
+                        onPressed: () {
+                          setState(() {
+                            isSqlite = !isSqlite;
+                            DishStream.setIsSql(isSqlite);
+                          });
+                        },
+                      ),
                       SizedBox(
                         width: 20,
                       ),
                       FlatButton(
-                        child: Text('COUCH SYNC'),
-                        color: Colors.orange,
+                        child:
+                            Text('${isSync == true ? 'ON SYNC' : 'OFF SYNC'}'),
+                        color: Colors.yellow,
                         onPressed: () {
-                          PouchDB.triggerReplicationFromCouchToSql();
+                          setState(() {
+                            isSync = !isSync;
+                            DishStream.updateSync(isSync);
+                          });
                         },
-                      )
+                      ),
+                      SizedBox(
+                        width: 20,
+                      ),
+                      FlatButton(
+                        child: Text('SYNC INSERT'),
+                        color: Colors.cyanAccent,
+                        onPressed: () async {
+                          Dish dish1 = new Dish(
+                              data: jsonEncode({"name": 'test1', "no": 100}));
+                          Dish dish2 = new Dish(
+                              data: jsonEncode({"name": 'test2', "no": 200}));
+                          DishStream.insertDish(dish: dish1);
+                          DishStream.insertDish(dish: dish2);
+                        },
+                      ),
                     ],
                   ),
                   Expanded(child: getData())
@@ -131,7 +142,7 @@ class _HomePageState extends State<HomePage> {
                                         size: 22,
                                         color: Colors.white,
                                       ),
-                                      onPressed: () {
+                                      onPressed: () async {
                                         //TO BE CHANGE
                                         if (nameController
                                             .value.text.isNotEmpty) {
@@ -141,15 +152,16 @@ class _HomePageState extends State<HomePage> {
                                                 nameController.text.toString(),
                                             "no": 0
                                           }));
-                                          PouchDB.insertDish(dish: dish);
+                                          await DishStream.insertDish(
+                                              dish: dish);
                                         }
                                       }))
                             ])))))));
   }
 
   getData() {
-    return StreamBuilder(
-      stream: PouchDB.dishStream,
+    return new StreamBuilder<List<Dish>>(
+      stream: DishStream.dishStream,
       builder: (BuildContext context, AsyncSnapshot<List<Dish>> snapshot) {
         return getSubjectCardWidget(snapshot);
       },
@@ -176,9 +188,9 @@ class _HomePageState extends State<HomePage> {
                             ))),
                     color: Colors.grey.withOpacity(0.1),
                   ),
-                  onDismissed: (direction) {
+                  onDismissed: (direction) async {
                     //DELETE DATA
-                    PouchDB.deleteDish(dish: subject);
+                    await DishStream.deleteDish(dish: subject);
                   },
                   direction: _dismissDirection,
                   key: new ObjectKey(subject),
@@ -192,16 +204,17 @@ class _HomePageState extends State<HomePage> {
                           trailing: IconButton(
                             icon: Icon(Icons.close),
                             color: Colors.red,
-                            onPressed: () {
-                              PouchDB.deleteDish(dish: subject);
+                            onPressed: () async {
+                              await DishStream.deleteDish(dish: subject);
                             },
                           ),
                           leading: InkWell(
-                              onTap: () {
+                              onTap: () async {
                                 Map data = jsonDecode(subject.data);
                                 data['no']++;
                                 subject.data = jsonEncode(data);
-                                PouchDB.updateDish(currdish: subject);
+
+                                await DishStream.updateDish(dish: subject);
                               },
                               child: Container(
                                   //decoration: BoxDecoration(),

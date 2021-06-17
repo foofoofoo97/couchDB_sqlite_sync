@@ -1,39 +1,41 @@
 import 'dart:async';
-import 'package:couchdb_sqlite_sync/adapters/http_adapter.dart';
 import 'package:couchdb_sqlite_sync/pouchdb.dart';
 import 'package:couchdb_sqlite_sync/replication_protocol/main_replicator.dart';
 
 class Sychronizer {
   StreamSubscription localSubscription;
   StreamSubscription remoteSubscription;
+  PouchDB localDB;
+  PouchDB remoteDB;
 
-  HttpAdapter httpAdapter = new HttpAdapter();
+  void init({
+    PouchDB localDb,
+    PouchDB remoteDb,
+    Function callback,
+  }) async {
+    localDB = localDb;
+    remoteDB = remoteDb;
 
-  Sychronizer() {
-    localSubscription = PouchDB.dishStream.listen((event) async {
-      await MainReplicator().replicateFromSqlite();
+    await MainReplicator(localDB: localDb, remoteDB: remoteDb)
+        .replicateFromSqlite();
+    await MainReplicator(localDB: localDb, remoteDB: remoteDb)
+        .replicateFromCouchDB();
+    callback();
+
+    localSubscription = localDB.dishStream().listen((event) async {
+      await MainReplicator(localDB: localDb, remoteDB: remoteDb)
+          .replicateFromSqlite();
+      callback();
     });
 
-    buildRemoteSubscription(remoteSubscription);
-  }
-
-  buildRemoteSubscription(StreamSubscription subscription) {
-    subscription = httpAdapter.changesIn().asStream().listen((event) {
-      event.listen((databasesResponse) async {
-        print("i am synchronizing ");
-        await MainReplicator().replicateFromCouchDB();
-        PouchDB.getDish();
-      });
-    }, onDone: () {
-      print("Task Done");
-      subscription.cancel();
-      buildRemoteSubscription(subscription);
-    }, onError: (error) {
-      print("Some Error");
+    remoteSubscription = remoteDB.dishStream().listen((event) async {
+      await MainReplicator(localDB: localDb, remoteDB: remoteDb)
+          .replicateFromCouchDB();
+      callback();
     });
   }
 
-  cancel() {
+  void cancel() {
     localSubscription.cancel();
     remoteSubscription.cancel();
   }

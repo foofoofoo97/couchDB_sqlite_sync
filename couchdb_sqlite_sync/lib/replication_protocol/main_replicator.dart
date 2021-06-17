@@ -1,16 +1,17 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:couchdb/couchdb.dart';
 import 'package:couchdb_sqlite_sync/adapters/http_adapter.dart';
 import 'package:couchdb_sqlite_sync/adapters/sqllite_adapter.dart';
 import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 import 'package:couchdb_sqlite_sync/model_class/sequence_log.dart';
+import 'package:couchdb_sqlite_sync/pouchdb.dart';
 import 'package:couchdb_sqlite_sync/sequence_service/sqlite_sequence_manager.dart';
 import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 
 class MainReplicator {
   final String uuid = "2b93a1dd-c17f-4422-addd-d432c5ae39c6";
+  final String uuid2 = "49ef41c4-6d12-4eff-8d22-62e2fdb82f5b";
   final uuidGenerator = new Uuid();
   final String dbName = "a-dish";
 
@@ -29,6 +30,8 @@ class MainReplicator {
   SqliteSequenceManager sqliteSequenceManager = SqliteSequenceManager();
   SqliteAdapter sqliteAdapter = SqliteAdapter();
   HttpAdapter httpAdapter = HttpAdapter();
+  PouchDB remoteDb;
+  PouchDB localDb;
 
   int version;
   String curRev;
@@ -37,26 +40,32 @@ class MainReplicator {
   String couchDbUpperBound;
   int sqliteUpperBound;
 
-  MainReplicator() {
+  MainReplicator({PouchDB remoteDB, PouchDB localDB}) {
+    remoteDb = remoteDB;
+    localDb = localDB;
     version = 0;
     sqliteLastSeq = 0;
     couchDbLastSeq = '0';
   }
 
   Future<void> replicateFromCouchDB() async {
-    await getReplicationLog();
-    await getCouchDBUpperBound();
-    await couchDbReplication();
-    await getSqliteUpperbound();
-    await writeReplicationLog();
+    localDb.dbLock().synchronized(() async {
+      await getReplicationLogForSqlite();
+      await getCouchDBUpperBound();
+      await couchDbReplication();
+      await getSqliteUpperbound();
+      await writeReplicationLogForSqlite();
+    });
   }
 
   Future<void> replicateFromSqlite() async {
-    await getReplicationLog();
-    await getSqliteUpperbound();
-    await sqliteReplication();
-    await getCouchDBUpperBound();
-    await writeReplicationLog();
+    localDb.dbLock().synchronized(() async {
+      await getReplicationLogForCouchDb();
+      await getSqliteUpperbound();
+      await sqliteReplication();
+      await getCouchDBUpperBound();
+      await writeReplicationLogForCouchDb();
+    });
   }
 
   Future<void> getSqliteUpperbound() async {
@@ -68,7 +77,7 @@ class MainReplicator {
     couchDbUpperBound = databasesResponse.updateSeq;
   }
 
-  Future<void> getReplicationLog() async {
+  Future<void> getReplicationLogForCouchDb() async {
     try {
       DocumentsResponse document = await docs.doc(dbName, "_local/$uuid");
       List replicatorHistory = document.doc['history'];
@@ -81,9 +90,22 @@ class MainReplicator {
     }
   }
 
-  Future<void> writeReplicationLog() async {
-    String sessionId = uuidGenerator.v4();
+  Future<void> getReplicationLogForSqlite() async {
+    try {
+      DocumentsResponse document =
+          await httpAdapter.doc(dbName, "_local/$uuid2");
+      List replicatorHistory = document.doc['history'];
+      sqliteLastSeq = replicatorHistory[0]['recorded_seq'];
+      couchDbLastSeq = document.doc['source_last_seq'];
+      curRev = document.rev;
+      version = document.doc["replication_id_version"];
+    } on CouchDbException catch (e) {
+      print(e);
+    }
+  }
 
+  Future<void> writeReplicationLogForCouchDb() async {
+    String sessionId = uuidGenerator.v4();
     await httpAdapter
         .insertReplicationLog(id: '_local/$uuid', rev: curRev, body: {
       "history": [
@@ -95,15 +117,16 @@ class MainReplicator {
     });
   }
 
-  Future<void> couchDbReplication2() async {
-    httpAdapter.changesSince(couchDbLastSeq).listen((event) async {
-      Uint8List bytes = Uint8List.fromList(event);
-      String res = String.fromCharCodes(bytes);
-
-      List result;
-      if (res.isNotEmpty) {
-        result = json.decode(res)['results'];
-      }
+  Future<void> writeReplicationLogForSqlite() async {
+    String sessionId = uuidGenerator.v4();
+    await httpAdapter
+        .insertReplicationLog(id: '_local/$uuid2', rev: curRev, body: {
+      "history": [
+        {"recorded_seq": sqliteUpperBound, "session_id": sessionId}
+      ],
+      "replication_id_version": version + 1,
+      "session_id": sessionId,
+      "source_last_seq": couchDbUpperBound
     });
   }
 
@@ -112,7 +135,7 @@ class MainReplicator {
         'https://sync-dev.feedmeapi.com/a-dish/_changes?descending=false&feed=normal&heartbeat=10000&since=$couchDbLastSeq&style=all_docs&descending=true');
 
     List result = streamRes.data['results'];
-    print(result);
+
     if (result != null && result.length > 0) {
       Map<String, dynamic> revs = new Map();
       for (Map log in result) {
@@ -130,70 +153,35 @@ class MainReplicator {
       List<Dish> updateDishes =
           await httpAdapter.getBulkDocs(revsDiff['update']);
       for (Dish dish in updateDishes) {
-        SequenceLog sequenceLog = new SequenceLog(
-            rev: dish.rev,
-            data: dish.data,
-            deleted: 'false',
-            changes: jsonEncode({
-              "changes": [
-                {"rev": dish.rev}
-              ]
-            }),
-            id: dish.id.toString());
-
         await sqliteAdapter.updateDish(dish);
-        await sqliteSequenceManager.addSequence(sequenceLog);
       }
 
       List<Dish> newDishes = await httpAdapter.getBulkDocs(revsDiff['insert']);
       for (Dish dish in newDishes) {
-        SequenceLog sequneceLog = new SequenceLog(
-            rev: dish.rev,
-            data: dish.data,
-            deleted: 'false',
-            changes: jsonEncode({
-              "changes": [
-                {"rev": dish.rev}
-              ]
-            }),
-            id: dish.id.toString());
-
         await sqliteAdapter.insertDish(dish);
-        await sqliteSequenceManager.addSequence(sequneceLog);
       }
 
       for (String id in revsDiff['deleted'].keys) {
         Dish dish = await sqliteAdapter.getSelectedDish(int.parse(id));
-        SequenceLog sequenceLog = new SequenceLog(
-            rev: revsDiff['deleted'][id],
-            data: dish.data,
-            deleted: 'true',
-            changes: jsonEncode({
-              "changes": [
-                {"rev": revsDiff['deleted'][id]}
-              ]
-            }),
-            id: dish.id.toString());
         await sqliteAdapter.deleteDish(dish);
-        await sqliteSequenceManager.addSequence(sequenceLog);
       }
     }
   }
 
-  //source = Sqlite
-  //target = CouchDB
-  //ask king do past revisions before deleted need include?
   Future<void> sqliteReplication() async {
     //get revs
     List<SequenceLog> sequences =
         await sqliteSequenceManager.getSequenceSince(sqliteLastSeq);
     Map<String, List<String>> revs = new Map();
+    List<String> deletedIds = new List();
 
     for (SequenceLog sequenceLog in sequences) {
       if (sequenceLog.deleted == 'true' && !revs.containsKey(sequenceLog.id)) {
         Dish dish =
             new Dish(id: int.parse(sequenceLog.id), rev: sequenceLog.rev);
-        httpAdapter.deleteDish(dish);
+
+        await httpAdapter.deleteDish(dish);
+        deletedIds.add(dish.id.toString());
       } else {
         revs.putIfAbsent(sequenceLog.id, () => []);
         List changesRev = jsonDecode(sequenceLog.changes)['changes'];
@@ -211,6 +199,7 @@ class MainReplicator {
 
     //insert bulk docs to CouchDb
     await httpAdapter.insertBulkDocs(bulkDocs);
+    await httpAdapter.resolveConflicts(bulkDocs, deletedIds);
     await httpAdapter.ensureFullCommit();
   }
 }

@@ -15,15 +15,18 @@ class HttpAdapter extends Adapter {
     port: 443,
     cors: true,
   );
+
   final String dbName = 'a-dish';
   final dbs = Databases(client);
   final docs = Documents(client);
 
   final _dishController = StreamController<List<Dish>>.broadcast();
-  get subjectList => _dishController.stream;
+  get dishStream => _dishController.stream;
+  StreamSubscription subscription;
 
   HttpAdapter() {
     getDish();
+    changesSubscription(subscription);
   }
 
   getDish() async {
@@ -31,8 +34,11 @@ class HttpAdapter extends Adapter {
   }
 
   dispose() {
+    subscription.cancel();
     _dishController.close();
   }
+
+  get stream => _dishController.stream;
 
   //BY DATABASE
   //CHANGES IN
@@ -41,16 +47,78 @@ class HttpAdapter extends Adapter {
         feed: 'longpoll', includeDocs: true, heartbeat: 1000, since: 'now');
   }
 
-  listenToEvent(DatabasesResponse databasesResponse) {
-    Map data = jsonDecode(databasesResponse.result);
-    return data['result'];
+  changesSubscription(StreamSubscription subscription) {
+    subscription = changesIn().asStream().listen((event) {
+      event.listen((databasesResponse) {
+        getDish();
+      });
+    }, onDone: () {
+      print("Task Done");
+      subscription.cancel();
+      changesSubscription(subscription);
+    }, onError: (error) {
+      print("Some Error");
+    });
+  }
+
+  resolveConflicts(List<Object> bulkDocs, List<String> deletedDocs) async {
+    for (Map doc in bulkDocs) {
+      DocumentsResponse documentsResponse = await docs.doc(
+        dbName,
+        doc['_id'],
+        conflicts: true,
+        revs: true,
+      );
+
+      if (documentsResponse.conflicts != null &&
+          documentsResponse.conflicts.length > 0) {
+        for (String conflict in documentsResponse.conflicts) {
+          int index = int.parse(conflict.split('-')[0]);
+          String tail = conflict.split('-')[1];
+          //check if inserted bulkdocs has index
+          //otherwise conflict is kept
+          if (doc['_revisions']['ids'].length > index) {
+            //conflicted revision is not a revision to be kept
+            if (tail != doc['_revisions']['ids'][index]) {
+              await docs.deleteDoc(dbName, doc['_id'], conflict);
+            }
+            //conflicted revision is wanted revision
+            else {
+              //delete wrong revision from winner revisions
+              //first check its existence
+              if (documentsResponse.revisions.length > index) {
+                List winnerRevisions = documentsResponse.revisions['ids'];
+                await docs.deleteDoc(
+                    dbName, doc['_id'], '$index-${winnerRevisions[index]}');
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (String id in deletedDocs) {
+      try {
+        DocumentsResponse documentsResponse = await docs.doc(
+          dbName,
+          id,
+          conflicts: true,
+          revs: true,
+        );
+        await docs.deleteDoc(dbName, id, documentsResponse.rev);
+      } catch (e) {
+        print(e);
+      }
+    }
+  }
+
+  doc(String dbName, String docId) async {
+    return await docs.doc(dbName, docId);
   }
 
   //POST/ insert BULKDOCS
   insertBulkDocs(List<Object> bulkDocs) async {
-    DatabasesResponse databasesResponse =
-        await dbs.insertBulkDocs(dbName, bulkDocs, newEdits: false);
-    return databasesResponse;
+    await dbs.insertBulkDocs(dbName, bulkDocs, newEdits: false);
   }
 
   //Get documents with revsdifference
@@ -93,6 +161,7 @@ class HttpAdapter extends Adapter {
     List<Dish> dishes = new List();
     for (Map value in databasesResponse.rows) {
       Dish dish = new Dish();
+
       dish.id = int.parse(value['doc']['_id']);
       dish.data = value['doc']['data'];
       dish.rev = value['doc']['_rev'];
@@ -131,7 +200,6 @@ class HttpAdapter extends Adapter {
           },
           rev: dish.rev,
           newEdits: false);
-      print('ya');
     } catch (e) {
       print('$e - error');
     }
@@ -157,8 +225,6 @@ class HttpAdapter extends Adapter {
         rev: dish.rev,
         newEdits: false,
       );
-
-      //getDish();
     } on CouchDbException catch (e) {
       print('$e - error');
     }
@@ -176,7 +242,7 @@ class HttpAdapter extends Adapter {
         data: documentsResponse.doc['data'],
         rev: documentsResponse.rev,
         revisions: jsonEncode(documentsResponse.revisions));
-    print(documentsResponse.revisions);
+
     return dish;
   }
 
@@ -185,7 +251,6 @@ class HttpAdapter extends Adapter {
   deleteDish(Dish dish) async {
     try {
       await docs.deleteDoc(dbName, dish.id.toString(), dish.rev);
-      //getDish();
     } on CouchDbException catch (e) {
       print('$e - error');
     }
@@ -216,5 +281,12 @@ class HttpAdapter extends Adapter {
     }
 
     return dishes;
+  }
+
+  createdID() async {
+    List<Dish> dishes = new List();
+    dishes = await getAllDish();
+    int id = dishes.length == 0 ? 0 : dishes.last.id;
+    return id;
   }
 }

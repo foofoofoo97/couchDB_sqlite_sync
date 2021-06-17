@@ -1,20 +1,30 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
 import 'package:couchdb_sqlite_sync/model_class/dish.dart';
 import 'package:couchdb_sqlite_sync/dish_service/dish_repository.dart';
+import 'package:couchdb_sqlite_sync/model_class/sequence_log.dart';
 import 'package:couchdb_sqlite_sync/sequence_service/sqlite_sequence_manager.dart';
 
 class SqliteAdapter extends Adapter {
   final _dishRepository = DishRepository();
   final SqliteSequenceManager sqliteSequenceManager =
       new SqliteSequenceManager();
+  final _dishController = StreamController<List<Dish>>.broadcast();
 
-  // final _dishController = StreamController<List<Dish>>.broadcast();
-  //get subjectList => _dishController.stream;
+  get dishStream => _dishController.stream;
 
-  // SqliteAdapter() {
-  //   getDish();
-  // }
+  SqliteAdapter() {
+    getDish();
+  }
+
+  dispose() {
+    _dishController.close();
+  }
+
+  getDish() async {
+    _dishController.sink.add(await getAllDish());
+  }
 
   @override
   getAllDish() async {
@@ -30,27 +40,60 @@ class SqliteAdapter extends Adapter {
 
   @override
   insertDish(Dish dish) async {
+    SequenceLog sequneceLog = new SequenceLog(
+        rev: dish.rev,
+        data: dish.data,
+        deleted: 'false',
+        changes: jsonEncode({
+          "changes": [
+            {"rev": dish.rev}
+          ]
+        }),
+        id: dish.id.toString());
+
     await _dishRepository.insertSubject(dish);
-    //getDish();
+    await sqliteSequenceManager.addSequence(sequneceLog);
+
+    getDish();
   }
 
   @override
   updateDish(Dish dish) async {
+    SequenceLog sequneceLog = new SequenceLog(
+        rev: dish.rev,
+        data: dish.data,
+        deleted: 'false',
+        changes: jsonEncode({
+          "changes": [
+            {"rev": dish.rev}
+          ]
+        }),
+        id: dish.id.toString());
+
+    //update sqlite dish
     await _dishRepository.updateSubject(dish);
-    //getDish();
+    await sqliteSequenceManager.addSequence(sequneceLog);
+    getDish();
   }
 
   @override
   deleteDish(Dish dish) async {
-    await _dishRepository.deleteSubjectById(dish.id);
-    //getDish();
-  }
+    SequenceLog sequenceLog = new SequenceLog(
+        rev: dish.rev,
+        data: dish.data,
+        deleted: 'true',
+        changes: jsonEncode({
+          "changes": [
+            {"rev": dish.rev}
+          ]
+        }),
+        id: dish.id.toString());
 
-  // getDish({String query}) async {
-  //   List<Dish> dishes = await _dishRepository.getAllSubject(query: query);
-  //   print(dishes.length > 0 ? dishes[0].toDatabaseJson() : null);
-  //   _dishController.sink.add(await _dishRepository.getAllSubject(query: query));
-  // }
+    await _dishRepository.deleteSubjectById(dish.id);
+    await sqliteSequenceManager.addSequence(sequenceLog);
+
+    getDish();
+  }
 
   createdID() async {
     return await _dishRepository.createdID();
@@ -68,13 +111,13 @@ class SqliteAdapter extends Adapter {
       Dish dish = await _dishRepository.getSeletedDish(int.parse(id));
       List changedRevs = revs[id]['_revisions'];
       if (dish != null) {
-        if (changedRevs[0] != dish.rev) {
+        if (int.parse(changedRevs[0].split('-')[0]) >
+            int.parse(dish.rev.split('-')[0])) {
           if (revs[id]['_deleted'] == true) {
             deletedRevs.putIfAbsent(id, () => revs[id]['_revisions'][0]);
           } else {
             List revisions = jsonDecode(dish.revisions)['_revisions'];
             for (String rev in changedRevs) {
-              print(revisions.contains(rev));
               if (!revisions.contains(rev)) {
                 updateRevs.putIfAbsent(id, () => []);
                 updateRevs[id].add(rev);
@@ -93,45 +136,11 @@ class SqliteAdapter extends Adapter {
     return {'update': updateRevs, 'insert': insertRevs, 'deleted': deletedRevs};
   }
 
-  deleteByID(String id) async {
-    await _dishRepository.deleteSubjectById(int.parse(id));
-  }
-
   getBulkDocs(Map<String, Map<String, List<String>>> revsDiff) async {
     List<Object> bulkDocs = new List();
     for (String key in revsDiff.keys) {
       Dish dish = await getSelectedDish(int.parse(key));
-      //check whether it is deleted
-      if (dish == null) {
-        // print('to be deleted');
-        // print(key);
-        // print(revsDiff[key]['missing'][1]);
-        // dish = new Dish(id: int.parse(key), rev: revsDiff[key]['missing'][1]);
-        // HttpAdapter httpAdapter = new HttpAdapter();
-        // await httpAdapter.deleteDish(dish);
-
-        // List<SequenceLog> sequences =
-        //     await sqliteSequenceManager.getSequenceById(key);
-        // List revisions = new List();
-        // int n = 0;
-        // for (SequenceLog sequenceLog in sequences) {
-        //   if (n == 0) {
-        //     dish.data = sequenceLog.data;
-        //   }
-        //   revisions.add(sequenceLog.rev.split('-')[1]);
-        // }
-
-        // bulkDocs.add({
-        //   "_id": dish.id.toString(),
-        //   "_rev": dish.rev,
-        //   "_deleted": true,
-        //   "_revisions": {
-        //     "ids": revisions,
-        //     "start": int.parse(dish.rev.split('-')[0])
-        //   },
-        //   "data": dish.data,
-        // });
-      } else {
+      if (dish != null) {
         bulkDocs.add({
           "_id": dish.id.toString(),
           "_rev": dish.rev,
@@ -143,11 +152,6 @@ class SqliteAdapter extends Adapter {
         });
       }
     }
-    print(bulkDocs);
     return bulkDocs;
   }
-
-  // dispose() {
-  //   _dishController.close();
-  // }
 }
