@@ -6,8 +6,9 @@ import 'package:sqflite/sqflite.dart';
 
 class DatabaseProvider {
   String dbName;
-  static final DatabaseProvider dbProvider = DatabaseProvider();
   Database _database;
+
+  DatabaseProvider({this.dbName});
 
   Future<Database> get database async {
     if (_database != null) return _database;
@@ -24,7 +25,7 @@ class DatabaseProvider {
   }
 
   //This is optional, and only used for changing DB schema migrations
-  void onUpgrade(Database database, int oldVersion, int newVersion) {
+  void onUpgrade(Database database, int oldVersion, int newVersion) async {
     if (newVersion > oldVersion) {}
   }
 

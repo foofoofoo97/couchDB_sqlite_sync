@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
-import 'package:couchdb_sqlite_sync/model_class/dish.dart';
+import 'package:couchdb_sqlite_sync/model_class/doc.dart';
 import 'package:couchdb/couchdb.dart';
 import 'package:dio/dio.dart';
 
@@ -16,29 +17,35 @@ class HttpAdapter extends Adapter {
     cors: true,
   );
 
-  final String dbName = 'a-dish';
+  String dbName;
   final dbs = Databases(client);
   final docs = Documents(client);
 
-  final _dishController = StreamController<List<Dish>>.broadcast();
-  get dishStream => _dishController.stream;
-  StreamSubscription subscription;
+  final _tableController = StreamController<List<Doc>>.broadcast();
+  StreamSubscription _subscription;
 
-  HttpAdapter() {
-    getDish();
-    changesSubscription(subscription);
+  get stream => _tableController.stream;
+
+  HttpAdapter({this.dbName}) {
+    updateStream();
+    changesSubscription(_subscription);
   }
 
-  getDish() async {
-    _dishController.sink.add(await getAllDish());
+  updateStream() async {
+    _tableController.sink.add(await getAllDocs());
   }
 
   dispose() {
-    subscription.cancel();
-    _dishController.close();
+    _tableController.close();
+    _subscription.cancel();
   }
 
-  get stream => _dishController.stream;
+  String generateRandomString(int len) {
+    var r = Random(DateTime.now().millisecond);
+    const _chars = 'abcdefghijklmnopqrstuvwxyz1234567890';
+    return List.generate(len, (index) => _chars[r.nextInt(_chars.length)])
+        .join();
+  }
 
   //BY DATABASE
   //CHANGES IN
@@ -50,14 +57,13 @@ class HttpAdapter extends Adapter {
   changesSubscription(StreamSubscription subscription) {
     subscription = changesIn().asStream().listen((event) {
       event.listen((databasesResponse) {
-        getDish();
+        updateStream();
       });
     }, onDone: () {
-      print("Task Done");
       subscription.cancel();
       changesSubscription(subscription);
     }, onError: (error) {
-      print("Some Error");
+      print(error);
     });
   }
 
@@ -72,31 +78,36 @@ class HttpAdapter extends Adapter {
 
       if (documentsResponse.conflicts != null &&
           documentsResponse.conflicts.length > 0) {
-        for (String conflict in documentsResponse.conflicts) {
-          int index = int.parse(conflict.split('-')[0]);
-          String tail = conflict.split('-')[1];
-          //check if inserted bulkdocs has index
-          //otherwise conflict is kept
-          if (doc['_revisions']['ids'].length > index) {
-            //conflicted revision is not a revision to be kept
-            if (tail != doc['_revisions']['ids'][index]) {
-              await docs.deleteDoc(dbName, doc['_id'], conflict);
-            }
-            //conflicted revision is wanted revision
-            else {
-              //delete wrong revision from winner revisions
-              //first check its existence
-              if (documentsResponse.revisions.length > index) {
+        if (doc['_revisions']['start'] >=
+            documentsResponse.revisions['start']) {
+          // if (doc['_rev'] != documentsResponse.rev) {
+          //   await docs.deleteDoc(dbName, doc['_id'], documentsResponse.rev);
+          // } else {
+          //   for (String conflict in documentsResponse.conflicts) {
+          //     await docs.deleteDoc(dbName, doc['_id'], conflict);
+          //   }
+          // }
+          for (String conflict in documentsResponse.conflicts) {
+            int index = int.parse(conflict.split('-')[0]);
+            String tail = conflict.split('-')[1];
+            if (doc['_revisions']['ids'].length > index) {
+              if (tail != doc['_revisions']['ids'][index]) {
+                await docs.deleteDoc(dbName, doc['_id'], conflict);
+              } else {
                 List winnerRevisions = documentsResponse.revisions['ids'];
-                await docs.deleteDoc(
-                    dbName, doc['_id'], '$index-${winnerRevisions[index]}');
+                if (winnerRevisions.length > index) {
+                  await docs.deleteDoc(dbName, doc['_id'],
+                      '$index-${winnerRevisions[winnerRevisions.length - 1 - index]}');
+                }
               }
             }
           }
+        } else {
+          await docs.deleteDoc(dbName, doc['_id'], doc['_rev']);
         }
       }
     }
-
+    //do i need to put condition like completely new revision, then should i follow couchdb??
     for (String id in deletedDocs) {
       try {
         DocumentsResponse documentsResponse = await docs.doc(
@@ -105,6 +116,7 @@ class HttpAdapter extends Adapter {
           conflicts: true,
           revs: true,
         );
+
         await docs.deleteDoc(dbName, id, documentsResponse.rev);
       } catch (e) {
         print(e);
@@ -112,17 +124,19 @@ class HttpAdapter extends Adapter {
     }
   }
 
-  doc(String dbName, String docId) async {
+  doc(String docId) async {
     return await docs.doc(dbName, docId);
   }
 
-  //POST/ insert BULKDOCS
-  insertBulkDocs(List<Object> bulkDocs) async {
+  @override
+  insertBulkDocs(List<Object> bulkDocs, List<String> deletedDocs) async {
     await dbs.insertBulkDocs(dbName, bulkDocs, newEdits: false);
+    await resolveConflicts(bulkDocs, deletedDocs);
+    await ensureFullCommit();
   }
 
-  //Get documents with revsdifference
-  revsDifferentWithCouchDb(Map<String, List<String>> revs) async {
+  @override
+  getRevsDiff(Map revs) async {
     ApiResponse result = await client.post('$dbName/_revs_diff', body: revs);
     Map<String, Map<String, List<String>>> revsDiff = result.json.keys
             .every(RegExp('[a-z0-9-]{1,36}').hasMatch)
@@ -144,23 +158,23 @@ class HttpAdapter extends Adapter {
     await dbs.ensureFullCommit(dbName);
   }
 
-  changesSince(String couchDbLastSeq) async {
-    var streamRes = await Dio().get<ResponseBody>(
-        'https://sync-dev.feedmeapi.com/a-dish/_changes?descending=false&feed=normal&heartbeat=10000&since=$couchDbLastSeq&style=all_docs&descending=true',
-        options: Options(responseType: ResponseType.stream));
+  @override
+  getChangesSince(String lastSeq) async {
+    var streamRes = await Dio().get(
+        'https://sync-dev.feedmeapi.com/$dbName/_changes?descending=false&feed=normal&heartbeat=10000&since=$lastSeq&style=all_docs&descending=true');
 
-    return streamRes.data.stream;
+    return streamRes.data['results'];
   }
 
   //GET ALL DOCS
   @override
-  getAllDish() async {
+  getAllDocs() async {
     DatabasesResponse databasesResponse =
         await dbs.allDocs(dbName, includeDocs: true);
 
-    List<Dish> dishes = new List();
+    List<Doc> dishes = new List();
     for (Map value in databasesResponse.rows) {
-      Dish dish = new Dish();
+      Doc dish = new Doc();
 
       dish.id = int.parse(value['doc']['_id']);
       dish.data = value['doc']['data'];
@@ -171,58 +185,73 @@ class HttpAdapter extends Adapter {
     return dishes;
   }
 
-  //POST (BULKDOCS)
-  bulkDocs(List<Object> docs, {bool revs}) async {
-    return await dbs.bulkDocs(dbName, docs, revs: revs);
-  }
+  // //POST (BULKDOCS)
+  // bulkDocs(List<Object> docs, {bool revs}) async {
+  //   return await dbs.bulkDocs(dbName, docs, revs: revs);
+  // }
 
   //DB INFO
-  dbInfo(String dbName) async {
+  dbInfo() async {
     return await dbs.dbInfo(dbName);
   }
 
-  //--------------------------------------------------------
-
-  //BY DOCUMENT
-  //PUT (INSERT)
   @override
-  insertDish(Dish dish) async {
+  getUpdateSeq() async {
+    DatabasesResponse databasesResponse = await dbInfo();
+    return databasesResponse.updateSeq;
+  }
+
+  @override
+  insertDoc(Doc doc) async {
     try {
+      doc.id = await createdID() + 1;
+      doc.rev = "0-${generateRandomString(33)}";
+      doc.revisions = jsonEncode({
+        "_revisions": [doc.rev.split('-')[1]]
+      });
+
       await docs.insertDoc(
-          'a-dish',
-          dish.id.toString(),
+          dbName,
+          doc.id.toString(),
           {
-            'data': dish.data,
+            'data': doc.data,
             '_revisions': {
-              "ids": [dish.rev.split('-')[1].toString()],
+              "ids": [doc.rev.split('-')[1].toString()],
               "start": 0
             }
           },
-          rev: dish.rev,
+          rev: doc.rev,
           newEdits: false);
     } catch (e) {
       print('$e - error');
     }
   }
 
-  //PUT (UPDATE)
   @override
-  updateDish(Dish dish) async {
+  updateDoc(Doc doc) async {
     try {
+      //update rev
+      String oldRev = doc.rev;
+      String head = doc.rev.split('-')[0];
+      String code = generateRandomString(33);
+      int version = int.parse(head);
+      version = version + 1;
+      doc.rev = version.toString() + '-' + code;
+
       await docs.insertDoc(
-        'a-dish',
-        dish.id.toString(),
+        dbName,
+        doc.id.toString(),
         {
-          'data': dish.data,
+          'data': doc.data,
           '_revisions': {
             "ids": [
-              dish.rev.split('-')[1].toString(),
-              dish.rev.split('-')[1].toString()
+              doc.rev.split('-')[1].toString(),
+              oldRev.split('-')[1].toString()
             ],
-            "start": int.parse(dish.rev.split('-')[0])
+            "start": int.parse(doc.rev.split('-')[0])
           }
         },
-        rev: dish.rev,
+        rev: doc.rev,
         newEdits: false,
       );
     } on CouchDbException catch (e) {
@@ -232,12 +261,12 @@ class HttpAdapter extends Adapter {
 
   //GET SPECIFIC DOC
   @override
-  getSelectedDish(int docId) async {
+  getSelectedDoc(String id) async {
     DocumentsResponse documentsResponse = await docs.doc(
       dbName,
-      docId.toString(),
+      id,
     );
-    Dish dish = new Dish(
+    Doc dish = new Doc(
         id: int.parse(documentsResponse.id),
         data: documentsResponse.doc['data'],
         rev: documentsResponse.rev,
@@ -248,44 +277,58 @@ class HttpAdapter extends Adapter {
 
   //DELETE DOC
   @override
-  deleteDish(Dish dish) async {
+  deleteDoc(Doc doc) async {
     try {
-      await docs.deleteDoc(dbName, dish.id.toString(), dish.rev);
+      await docs.deleteDoc(dbName, doc.id.toString(), doc.rev);
     } on CouchDbException catch (e) {
       print('$e - error');
     }
   }
 
-  insertReplicationLog(
-      {String id, String rev, Map<String, Object> body}) async {
+  insertLog({String id, String rev, Map<String, Object> body}) async {
     try {
       await docs.insertDoc(dbName, id, body, rev: rev, newEdits: false);
-    } catch (e) {
+    } on CouchDbException catch (e) {
       print('$e - error');
     }
   }
 
-  getBulkDocs(Map missingRevs) async {
-    List<Dish> dishes = new List();
-    for (String id in missingRevs.keys) {
-      DocumentsResponse documentsResponse =
-          await docs.doc(dbName, id, revs: true, latest: true);
-
-      Dish dish = new Dish();
-      dish.data = documentsResponse.doc['data'];
-      dish.id = int.parse(id);
-      dish.rev = documentsResponse.doc['_rev'];
-      dish.revisions =
-          jsonEncode({'_revisions': documentsResponse.revisions['ids']});
-      dishes.add(dish);
+  getLog(String id) async {
+    try {
+      DocumentsResponse documentsResponse = await docs.doc(dbName, id);
+      return documentsResponse;
+    } on CouchDbException catch (e) {
+      print('$e - error');
     }
-
-    return dishes;
   }
 
+  @override
+  getBulkDocs(Map revsDiff) async {
+    try {
+      List<Doc> dishes = new List();
+      for (String id in revsDiff.keys) {
+        DocumentsResponse documentsResponse =
+            await docs.doc(dbName, id, revs: true, latest: true);
+
+        Doc dish = new Doc();
+        dish.data = documentsResponse.doc['data'];
+        dish.id = int.parse(id);
+        dish.rev = documentsResponse.doc['_rev'];
+        dish.revisions =
+            jsonEncode({'_revisions': documentsResponse.revisions['ids']});
+        dishes.add(dish);
+      }
+
+      return dishes;
+    } on CouchDbException catch (e) {
+      print('$e - error');
+    }
+  }
+
+  @override
   createdID() async {
-    List<Dish> dishes = new List();
-    dishes = await getAllDish();
+    List<Doc> dishes = new List();
+    dishes = await getAllDocs();
     int id = dishes.length == 0 ? 0 : dishes.last.id;
     return id;
   }

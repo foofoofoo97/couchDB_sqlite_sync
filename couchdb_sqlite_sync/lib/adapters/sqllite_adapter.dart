@@ -1,114 +1,199 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
-import 'package:couchdb_sqlite_sync/model_class/dish.dart';
-import 'package:couchdb_sqlite_sync/dish_service/dish_repository.dart';
+import 'package:couchdb_sqlite_sync/database_service/database_repository.dart';
+import 'package:couchdb_sqlite_sync/model_class/doc.dart';
 import 'package:couchdb_sqlite_sync/model_class/sequence_log.dart';
 import 'package:couchdb_sqlite_sync/sequence_service/sqlite_sequence_manager.dart';
 
 class SqliteAdapter extends Adapter {
-  final _dishRepository = DishRepository();
-  final SqliteSequenceManager sqliteSequenceManager =
-      new SqliteSequenceManager();
-  final _dishController = StreamController<List<Dish>>.broadcast();
+  DatabaseRepository _tableRepository;
+  SequenceRepository _sequenceRepository;
 
-  get dishStream => _dishController.stream;
+  final _tableController = StreamController<List<Doc>>.broadcast();
 
-  SqliteAdapter() {
-    getDish();
+  SqliteAdapter({String dbName}) {
+    _tableRepository = DatabaseRepository(dbName: dbName);
+    _sequenceRepository = SequenceRepository(dbName: dbName);
   }
+
+  get stream => _tableController.stream;
 
   dispose() {
-    _dishController.close();
+    _tableController.close();
   }
 
-  getDish() async {
-    _dishController.sink.add(await getAllDish());
+  updateStream() async {
+    _tableController.sink.add(await getAllDocs());
   }
 
-  @override
-  getAllDish() async {
-    List<Dish> dishes = await _dishRepository.getAllSubject();
-    return dishes;
-  }
-
-  @override
-  getSelectedDish(int id) async {
-    Dish dish = await _dishRepository.getSeletedDish(id);
-    return dish;
+  String generateRandomString(int len) {
+    var r = Random(DateTime.now().millisecond);
+    const _chars = 'abcdefghijklmnopqrstuvwxyz1234567890';
+    return List.generate(len, (index) => _chars[r.nextInt(_chars.length)])
+        .join();
   }
 
   @override
-  insertDish(Dish dish) async {
+  getAllDocs() async {
+    List<Doc> docs = await _tableRepository.getAllDocs();
+    return docs;
+  }
+
+  @override
+  getSelectedDoc(String id) async {
+    Doc doc = await _tableRepository.getSelectedDoc(id: int.parse(id));
+    return doc;
+  }
+
+  @override
+  insertBulkDocs(List<Object> bulkDocs, List<String> deletedDocs) {}
+
+  insertSourceDoc(Doc doc) async {
+    doc.revisions = jsonEncode({
+      "_revisions": [doc.rev.split('-')[1]]
+    });
     SequenceLog sequneceLog = new SequenceLog(
-        rev: dish.rev,
-        data: dish.data,
+        rev: doc.rev,
+        data: doc.data,
         deleted: 'false',
         changes: jsonEncode({
           "changes": [
-            {"rev": dish.rev}
+            {"rev": doc.rev}
           ]
         }),
-        id: dish.id.toString());
+        id: doc.id.toString());
 
-    await _dishRepository.insertSubject(dish);
-    await sqliteSequenceManager.addSequence(sequneceLog);
+    await _tableRepository.insertDoc(doc: doc);
+    await _sequenceRepository.addSequence(sequneceLog);
 
-    getDish();
+    updateStream();
   }
 
   @override
-  updateDish(Dish dish) async {
+  insertDoc(Doc doc) async {
+    doc.id = await createdID() + 1;
+    doc.rev = "0-${generateRandomString(33)}";
+    doc.revisions = jsonEncode({
+      "_revisions": [doc.rev.split('-')[1]]
+    });
     SequenceLog sequneceLog = new SequenceLog(
-        rev: dish.rev,
-        data: dish.data,
+        rev: doc.rev,
+        data: doc.data,
         deleted: 'false',
         changes: jsonEncode({
           "changes": [
-            {"rev": dish.rev}
+            {"rev": doc.rev}
           ]
         }),
-        id: dish.id.toString());
+        id: doc.id.toString());
+
+    await _tableRepository.insertDoc(doc: doc);
+    await _sequenceRepository.addSequence(sequneceLog);
+
+    updateStream();
+  }
+
+  updateSourceDoc(Doc doc) async {
+    Map revisions = jsonDecode(doc.revisions);
+    revisions['_revisions'].insert(0, doc.rev.split('-')[1]);
+    doc.revisions = jsonEncode(revisions);
+
+    SequenceLog sequneceLog = new SequenceLog(
+        rev: doc.rev,
+        data: doc.data,
+        deleted: 'false',
+        changes: jsonEncode({
+          "changes": [
+            {"rev": doc.rev}
+          ]
+        }),
+        id: doc.id.toString());
 
     //update sqlite dish
-    await _dishRepository.updateSubject(dish);
-    await sqliteSequenceManager.addSequence(sequneceLog);
-    getDish();
+    await _tableRepository.updateDoc(doc: doc);
+    await _sequenceRepository.addSequence(sequneceLog);
+    updateStream();
   }
 
   @override
-  deleteDish(Dish dish) async {
+  updateDoc(Doc doc) async {
+    //update rev
+    String head = doc.rev.split('-')[0];
+    String code = generateRandomString(33);
+    int version = int.parse(head);
+    version = version + 1;
+    doc.rev = version.toString() + '-' + code;
+
+    //update revisions
+    Map revisions = jsonDecode(doc.revisions);
+    revisions['_revisions'].insert(0, doc.rev.split('-')[1]);
+    doc.revisions = jsonEncode(revisions);
+
+    SequenceLog sequneceLog = new SequenceLog(
+        rev: doc.rev,
+        data: doc.data,
+        deleted: 'false',
+        changes: jsonEncode({
+          "changes": [
+            {"rev": doc.rev}
+          ]
+        }),
+        id: doc.id.toString());
+
+    //update sqlite dish
+    await _tableRepository.updateDoc(doc: doc);
+    await _sequenceRepository.addSequence(sequneceLog);
+
+    updateStream();
+  }
+
+  @override
+  deleteDoc(Doc doc) async {
     SequenceLog sequenceLog = new SequenceLog(
-        rev: dish.rev,
-        data: dish.data,
+        rev: doc.rev,
+        data: doc.data,
         deleted: 'true',
         changes: jsonEncode({
           "changes": [
-            {"rev": dish.rev}
+            {"rev": doc.rev}
           ]
         }),
-        id: dish.id.toString());
+        id: doc.id.toString());
 
-    await _dishRepository.deleteSubjectById(dish.id);
-    await sqliteSequenceManager.addSequence(sequenceLog);
+    await _tableRepository.deleteDoc(id: doc.id);
+    await _sequenceRepository.addSequence(sequenceLog);
 
-    getDish();
+    updateStream();
   }
 
+  @override
   createdID() async {
-    return await _dishRepository.createdID();
+    return await _tableRepository.createdID();
   }
 
   isExistingID(int id) async {
-    return await _dishRepository.isExistingData(id);
+    return await _tableRepository.isExistingDoc(id: id);
   }
 
-  revsDifferentWithSqlite(Map<String, dynamic> revs) async {
+  @override
+  getUpdateSeq() async {
+    return (await _sequenceRepository.getUpdateSeq()).toString();
+  }
+
+  @override
+  getChangesSince(String lastSeq) async {
+    return await _sequenceRepository.getSequenceSince(int.parse(lastSeq));
+  }
+
+  @override
+  getRevsDiff(Map revs) async {
     Map updateRevs = new Map();
     Map insertRevs = new Map();
     Map deletedRevs = new Map();
     for (String id in revs.keys) {
-      Dish dish = await _dishRepository.getSeletedDish(int.parse(id));
+      Doc dish = await getSelectedDoc(id);
       List changedRevs = revs[id]['_revisions'];
       if (dish != null) {
         if (int.parse(changedRevs[0].split('-')[0]) >
@@ -136,10 +221,11 @@ class SqliteAdapter extends Adapter {
     return {'update': updateRevs, 'insert': insertRevs, 'deleted': deletedRevs};
   }
 
-  getBulkDocs(Map<String, Map<String, List<String>>> revsDiff) async {
+  @override
+  getBulkDocs(Map revsDiff) async {
     List<Object> bulkDocs = new List();
     for (String key in revsDiff.keys) {
-      Dish dish = await getSelectedDish(int.parse(key));
+      Doc dish = await getSelectedDoc(key);
       if (dish != null) {
         bulkDocs.add({
           "_id": dish.id.toString(),

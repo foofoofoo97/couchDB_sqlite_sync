@@ -2,13 +2,19 @@ import 'dart:async';
 import 'package:couchdb_sqlite_sync/database/sequence_db.dart';
 import 'package:couchdb_sqlite_sync/model_class/sequence_log.dart';
 
-class SqliteSequenceManager {
-  final dbProvider = SequenceDatabaseProvider.dbProvider;
+class SequenceRepository {
+  String dbName;
+  SequenceDatabaseProvider dbProvider;
+
+  SequenceRepository({this.dbName}) {
+    dbProvider = SequenceDatabaseProvider(dbName: dbName);
+  }
 
   Future<String> isExistingData(int id) async {
     final db = await dbProvider.database;
     List<Map<String, dynamic>> result;
-    result = await db.query(sequenceTable, where: "id = ?", whereArgs: [id]);
+
+    result = await db.query(dbName, where: "id = ?", whereArgs: [id]);
     if (result.length > 0) {
       return result[0]['rev'].toString();
     }
@@ -18,8 +24,8 @@ class SqliteSequenceManager {
   //Adds new
   Future<int> getUpdateSeq() async {
     final db = await dbProvider.database;
-    var result = await db.query(sequenceTable, orderBy: "seq DESC", limit: 1);
 
+    var result = await db.query(dbName, orderBy: "seq DESC", limit: 1);
     List<SequenceLog> lastSequence = result.isNotEmpty
         ? result.map((item) => SequenceLog.fromDatabaseJson(item)).toList()
         : [];
@@ -31,7 +37,7 @@ class SqliteSequenceManager {
   Future<int> addSequence(SequenceLog sequenceLog) async {
     final db = await dbProvider.database;
     var result = await db.rawInsert(
-        'INSERT INTO $sequenceTable(id, deleted, changes, data, rev) VALUES("${sequenceLog.id}", \'${sequenceLog.deleted}\', \'${sequenceLog.changes}\', \'${sequenceLog.data}\', "${sequenceLog.rev}")');
+        'INSERT INTO $dbName(id, deleted, changes, data, rev) VALUES("${sequenceLog.id}", \'${sequenceLog.deleted}\', \'${sequenceLog.changes}\', \'${sequenceLog.data}\', "${sequenceLog.rev}")');
     return result;
   }
 
@@ -40,7 +46,7 @@ class SqliteSequenceManager {
     final db = await dbProvider.database;
     List<Map<String, dynamic>> result;
 
-    result = await db.query(sequenceTable, where: 'seq = ?', whereArgs: [seq]);
+    result = await db.query(dbName, where: 'seq = ?', whereArgs: [seq]);
     List<SequenceLog> sequences = result.isNotEmpty
         ? result.map((item) => SequenceLog.fromDatabaseJson(item)).toList()
         : [];
@@ -52,8 +58,8 @@ class SqliteSequenceManager {
     final db = await dbProvider.database;
     List<Map<String, dynamic>> result;
 
-    result = await db.query(sequenceTable,
-        orderBy: "seq DESC", where: 'id = ?', whereArgs: [id]);
+    result = await db
+        .query(dbName, orderBy: "seq DESC", where: 'id = ?', whereArgs: [id]);
     List<SequenceLog> sequences = result.isNotEmpty
         ? result.map((item) => SequenceLog.fromDatabaseJson(item)).toList()
         : [];
@@ -65,7 +71,7 @@ class SqliteSequenceManager {
     final db = await dbProvider.database;
     List<Map<String, dynamic>> result;
 
-    result = await db.query(sequenceTable,
+    result = await db.query(dbName,
         where: 'seq >= ?', orderBy: "seq DESC", whereArgs: [since]);
     List<SequenceLog> sequences = result.isNotEmpty
         ? result.map((item) => SequenceLog.fromDatabaseJson(item)).toList()
@@ -81,10 +87,10 @@ class SqliteSequenceManager {
     List<Map<String, dynamic>> result;
     if (query != null) {
       if (query.isNotEmpty)
-        result = await db.query(sequenceTable,
+        result = await db.query(dbName,
             columns: columns, where: 'name LIKE ?', whereArgs: ["%$query%"]);
     } else {
-      result = await db.query(sequenceTable, columns: columns);
+      result = await db.query(dbName, columns: columns);
     }
     List<SequenceLog> subjects = result.isNotEmpty
         ? result.map((item) => SequenceLog.fromDatabaseJson(item)).toList()
@@ -95,15 +101,14 @@ class SqliteSequenceManager {
 
   Future<int> deleteSequence(int id) async {
     final db = await dbProvider.database;
-    var result =
-        await db.delete(sequenceTable, where: 'seq = ?', whereArgs: [id]);
+    var result = await db.delete(dbName, where: 'seq = ?', whereArgs: [id]);
     return result;
   }
 
-  Future deleteAllSubject() async {
+  Future deleteAllSequences() async {
     final db = await dbProvider.database;
     var result = await db.delete(
-      sequenceTable,
+      dbName,
     );
     return result;
   }

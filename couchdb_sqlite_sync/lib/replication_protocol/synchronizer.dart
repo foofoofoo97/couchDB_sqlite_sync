@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:couchdb_sqlite_sync/pouchdb.dart';
-import 'package:couchdb_sqlite_sync/replication_protocol/main_replicator.dart';
+import 'package:couchdb_sqlite_sync/replication_protocol/replicator.dart';
 
 class Sychronizer {
   StreamSubscription localSubscription;
@@ -8,7 +8,7 @@ class Sychronizer {
   PouchDB localDB;
   PouchDB remoteDB;
 
-  void init({
+  Future<void> init({
     PouchDB localDb,
     PouchDB remoteDb,
     Function callback,
@@ -16,20 +16,20 @@ class Sychronizer {
     localDB = localDb;
     remoteDB = remoteDb;
 
-    await MainReplicator(localDB: localDb, remoteDB: remoteDb)
+    await Replicator(localDb: localDB, remoteDb: remoteDB)
         .replicateFromSqlite();
-    await MainReplicator(localDB: localDb, remoteDB: remoteDb)
+    await Replicator(localDb: localDB, remoteDb: remoteDB)
         .replicateFromCouchDB();
     callback();
 
-    localSubscription = localDB.dishStream().listen((event) async {
-      await MainReplicator(localDB: localDb, remoteDB: remoteDb)
+    localSubscription = localDB.stream().listen((event) async {
+      await Replicator(localDb: localDb, remoteDb: remoteDb)
           .replicateFromSqlite();
       callback();
     });
 
-    remoteSubscription = remoteDB.dishStream().listen((event) async {
-      await MainReplicator(localDB: localDb, remoteDB: remoteDb)
+    remoteSubscription = remoteDB.stream().listen((event) async {
+      await Replicator(localDb: localDb, remoteDb: remoteDb)
           .replicateFromCouchDB();
       callback();
     });

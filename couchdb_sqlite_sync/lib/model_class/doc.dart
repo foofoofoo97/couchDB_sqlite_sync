@@ -1,11 +1,12 @@
-class Dish {
+class Doc {
   int id;
   String data;
   String rev;
   String revisions;
 
-  Dish({this.id, this.data, this.rev, this.revisions});
-  factory Dish.fromDatabaseJson(Map<String, dynamic> data) => Dish(
+  Doc({this.id, this.data, this.rev, this.revisions});
+
+  factory Doc.fromDatabaseJson(Map<String, dynamic> data) => Doc(
       id: data['id'],
       data: data['data'],
       rev: data['rev'],
