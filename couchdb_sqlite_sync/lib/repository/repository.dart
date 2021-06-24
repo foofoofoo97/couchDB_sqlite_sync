@@ -4,7 +4,7 @@ class Repository {
 
   Repository({this.dbName, this.type});
 
-  generateNewId(String id) {
+  generateNewId({String id}) {
     return '${this.getIdPrefix()}${id ?? new DateTime.now().toIso8601String()}${this.getIdSuffix()}';
   }
 
@@ -16,7 +16,7 @@ class Repository {
     return '';
   }
 
-  String getQuery() {
-    return '';
+  String getQuery(bool isLocal) {
+    return isLocal ? '$type%' : '^$type';
   }
 }

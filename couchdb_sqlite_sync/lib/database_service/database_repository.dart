@@ -7,12 +7,13 @@ class DatabaseRepository {
     databaseDao = new DatabaseDao(dbName: dbName);
   }
 
-  Future getAllDocs({String query}) => databaseDao.getAllDocs(query: query);
+  Future getAllDocs({String query, String order}) =>
+      databaseDao.getAllDocs(query: query, order: order);
   Future insertDoc({Doc doc}) => databaseDao.createDoc(doc: doc);
   Future updateDoc({Doc doc}) => databaseDao.updateDoc(doc: doc);
-  Future deleteDoc({int id}) => databaseDao.deleteDoc(id: id);
+  Future deleteDoc({String id}) => databaseDao.deleteDoc(id: id);
   Future deleteAllDocs() => databaseDao.deleteAllDocs();
-  Future getSelectedDoc({int id}) => databaseDao.getDoc(id: id);
-  Future createdID() => databaseDao.createdID();
-  Future isExistingDoc({int id}) => databaseDao.isExistingDoc(id: id);
+  Future getSelectedDoc({String id}) => databaseDao.getDoc(id: id);
+  // Future createdID() => databaseDao.createdID();
+  Future isExistingDoc({String id}) => databaseDao.isExistingDoc(id: id);
 }

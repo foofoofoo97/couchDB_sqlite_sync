@@ -4,6 +4,7 @@ import 'package:couchdb_sqlite_sync/model_class/order.dart';
 import 'package:couchdb_sqlite_sync/pouchdb.dart';
 import 'package:couchdb_sqlite_sync/replication_protocol/synchronizer.dart';
 import 'package:couchdb_sqlite_sync/repository/repository.dart';
+import 'package:couchdb_sqlite_sync/repository/sort_order.dart';
 
 class HomePageManager {
   final _controller = StreamController<List<Order>>.broadcast();
@@ -14,23 +15,23 @@ class HomePageManager {
   static String dbName = 'adish';
   static String type = 'order';
 
-  PouchDB remoteDB = new PouchDB(isLocal: false, dbName: dbName);
-  PouchDB localDB = new PouchDB(isLocal: true, dbName: dbName);
-  Repository order = Repository(dbName: dbName, type: type);
+  static PouchDB remoteDB = new PouchDB(isLocal: false, dbName: dbName);
+  static PouchDB localDB = new PouchDB(isLocal: true, dbName: dbName);
+  Repository orderRepo = Repository(dbName: dbName, type: type);
 
-  Sychronizer sychronizer = new Sychronizer();
+  SortOrder sortOrder;
+
+  Sychronizer sychronizer =
+      new Sychronizer(remoteDB: remoteDB, localDB: localDB);
 
   dispose() {
     _controller.close();
   }
 
-  HomePageManager({this.isSql, this.isSync}) {
-    sychronizer.init(
-        remoteDb: remoteDB,
-        localDb: localDB,
-        callback: () {
-          updateStream();
-        });
+  HomePageManager({this.isSql, this.isSync, this.sortOrder}) {
+    sychronizer.init(callback: () {
+      updateStream();
+    });
     updateStream();
   }
 
@@ -42,22 +43,26 @@ class HomePageManager {
   void updateSync({bool isSync}) {
     this.isSync = isSync;
     if (this.isSync) {
-      sychronizer.init(
-          remoteDb: remoteDB,
-          localDb: localDB,
-          callback: () {
-            updateStream();
-          });
-
-      //updateStream();
+      sychronizer.init(callback: () {
+        updateStream();
+      });
     } else {
       sychronizer.cancel();
     }
   }
 
+  void changeOrder({SortOrder sortOrder}) {
+    this.sortOrder = sortOrder;
+
+    updateStream();
+  }
+
   void updateStream() async {
-    List<Doc> docs =
-        isSql ? await localDB.getAllDocs() : await remoteDB.getAllDocs();
+    List<Doc> docs = isSql
+        ? await localDB.getAllDocs(
+            query: orderRepo.getQuery(isSql), order: sortOrder)
+        : await remoteDB.getAllDocs(
+            query: orderRepo.getQuery(isSql), order: sortOrder);
 
     List<Order> orders =
         docs.isNotEmpty ? docs.map((item) => Order.fromDoc(item)).toList() : [];
@@ -74,6 +79,7 @@ class HomePageManager {
   }
 
   Future<void> insertDoc({Order order}) async {
+    order.id = orderRepo.generateNewId();
     isSql
         ? await localDB.insertDoc(doc: order.toDoc())
         : await remoteDB.insertDoc(doc: order.toDoc());

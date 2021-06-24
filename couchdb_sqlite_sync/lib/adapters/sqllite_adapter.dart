@@ -36,14 +36,15 @@ class SqliteAdapter extends Adapter {
   }
 
   @override
-  getAllDocs() async {
-    List<Doc> docs = await _tableRepository.getAllDocs();
+  getAllDocs({String query, String order}) async {
+    List<Doc> docs =
+        await _tableRepository.getAllDocs(query: query, order: order);
     return docs;
   }
 
   @override
   getSelectedDoc(String id) async {
-    Doc doc = await _tableRepository.getSelectedDoc(id: int.parse(id));
+    Doc doc = await _tableRepository.getSelectedDoc(id: id);
     return doc;
   }
 
@@ -51,9 +52,6 @@ class SqliteAdapter extends Adapter {
   insertBulkDocs(List<Object> bulkDocs, List<String> deletedDocs) {}
 
   insertSourceDoc(Doc doc) async {
-    doc.revisions = jsonEncode({
-      "_revisions": [doc.rev.split('-')[1]]
-    });
     SequenceLog sequneceLog = new SequenceLog(
         rev: doc.rev,
         data: doc.data,
@@ -73,7 +71,7 @@ class SqliteAdapter extends Adapter {
 
   @override
   insertDoc(Doc doc) async {
-    doc.id = await createdID() + 1;
+    //doc.id = await createdID() + 1;
     doc.rev = "0-${generateRandomString(33)}";
     doc.revisions = jsonEncode({
       "_revisions": [doc.rev.split('-')[1]]
@@ -96,10 +94,6 @@ class SqliteAdapter extends Adapter {
   }
 
   updateSourceDoc(Doc doc) async {
-    Map revisions = jsonDecode(doc.revisions);
-    revisions['_revisions'].insert(0, doc.rev.split('-')[1]);
-    doc.revisions = jsonEncode(revisions);
-
     SequenceLog sequneceLog = new SequenceLog(
         rev: doc.rev,
         data: doc.data,
@@ -168,12 +162,12 @@ class SqliteAdapter extends Adapter {
     updateStream();
   }
 
-  @override
-  createdID() async {
-    return await _tableRepository.createdID();
-  }
+  // @override
+  // createdID() async {
+  //   return await _tableRepository.createdID();
+  // }
 
-  isExistingID(int id) async {
+  isExistingID(String id) async {
     return await _tableRepository.isExistingDoc(id: id);
   }
 

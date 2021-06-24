@@ -151,7 +151,7 @@ class Replicator {
 
     for (SequenceLog sequenceLog in sequences) {
       if (sequenceLog.deleted == 'true' && !revs.containsKey(sequenceLog.id)) {
-        Doc doc = new Doc(id: int.parse(sequenceLog.id), rev: sequenceLog.rev);
+        Doc doc = new Doc(id: sequenceLog.id, rev: sequenceLog.rev);
         await remoteDb.adapter.deleteDoc(doc);
         deletedDocs.add(doc.id.toString());
       } else {

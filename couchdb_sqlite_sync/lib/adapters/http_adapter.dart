@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
 import 'package:couchdb_sqlite_sync/model_class/doc.dart';
 import 'package:couchdb/couchdb.dart';
+import 'package:couchdb_sqlite_sync/repository/repository.dart';
 import 'package:dio/dio.dart';
 
 class HttpAdapter extends Adapter {
@@ -166,23 +167,50 @@ class HttpAdapter extends Adapter {
     return streamRes.data['results'];
   }
 
+  createIndex({List<String> fields, String name, String type = "json"}) async {
+    DatabasesResponse databasesResponse = await dbs.createIndexIn(dbName,
+        indexFields: fields, name: "name", type: type);
+    return databasesResponse;
+  }
+
   //GET ALL DOCS
+  //!LIMIT SET HOW MANY
+  //!SORT NEED CHANGE LATER
   @override
-  getAllDocs() async {
-    DatabasesResponse databasesResponse =
-        await dbs.allDocs(dbName, includeDocs: true);
+  getAllDocs({String query, String order}) async {
+    DatabasesResponse databasesResponse;
+    List<Doc> docs = new List();
+    if (query == null) {
+      databasesResponse = await dbs.allDocs(dbName, includeDocs: true);
+      for (Map value in databasesResponse.rows) {
+        Doc doc = new Doc();
 
-    List<Doc> dishes = new List();
-    for (Map value in databasesResponse.rows) {
-      Doc dish = new Doc();
+        doc.id = value['doc']['_id'];
+        doc.data = value['doc']['data'];
+        doc.rev = value['doc']['_rev'];
+        docs.add(doc);
+      }
+    } else {
+      databasesResponse = await dbs.find(
+          dbName,
+          {
+            "_id": {"\$regex": query},
+          },
+          sort: [
+            {"_id": order}
+          ],
+          limit: 1000);
 
-      dish.id = int.parse(value['doc']['_id']);
-      dish.data = value['doc']['data'];
-      dish.rev = value['doc']['_rev'];
-      dishes.add(dish);
+      for (Map value in databasesResponse.docs) {
+        Doc doc = new Doc();
+        doc.id = value['_id'];
+        doc.data = value['data'];
+        doc.rev = value['_rev'];
+        docs.add(doc);
+      }
     }
 
-    return dishes;
+    return docs;
   }
 
   // //POST (BULKDOCS)
@@ -204,7 +232,7 @@ class HttpAdapter extends Adapter {
   @override
   insertDoc(Doc doc) async {
     try {
-      doc.id = await createdID() + 1;
+      // doc.id = await createdID() + 1;
       doc.rev = "0-${generateRandomString(33)}";
       doc.revisions = jsonEncode({
         "_revisions": [doc.rev.split('-')[1]]
@@ -267,7 +295,7 @@ class HttpAdapter extends Adapter {
       id,
     );
     Doc dish = new Doc(
-        id: int.parse(documentsResponse.id),
+        id: documentsResponse.id,
         data: documentsResponse.doc['data'],
         rev: documentsResponse.rev,
         revisions: jsonEncode(documentsResponse.revisions));
@@ -312,7 +340,7 @@ class HttpAdapter extends Adapter {
 
         Doc dish = new Doc();
         dish.data = documentsResponse.doc['data'];
-        dish.id = int.parse(id);
+        dish.id = id;
         dish.rev = documentsResponse.doc['_rev'];
         dish.revisions =
             jsonEncode({'_revisions': documentsResponse.revisions['ids']});
@@ -325,11 +353,11 @@ class HttpAdapter extends Adapter {
     }
   }
 
-  @override
-  createdID() async {
-    List<Doc> dishes = new List();
-    dishes = await getAllDocs();
-    int id = dishes.length == 0 ? 0 : dishes.last.id;
-    return id;
-  }
+  // @override
+  // createdID() async {
+  //   List<Doc> dishes = new List();
+  //   dishes = await getAllDocs();
+  //   int id = dishes.length == 0 ? 0 : dishes.last.id;
+  //   return id;
+  // }
 }

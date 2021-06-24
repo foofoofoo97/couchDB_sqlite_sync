@@ -1,5 +1,6 @@
 import 'package:couchdb_sqlite_sync/homepage_manager.dart';
 import 'package:couchdb_sqlite_sync/model_class/order.dart';
+import 'package:couchdb_sqlite_sync/repository/sort_order.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -19,12 +20,15 @@ class _HomePageState extends State<HomePage> {
 
   bool isSql;
   bool isSync;
+  SortOrder sortOrder;
 
   @override
   void initState() {
     isSql = true;
     isSync = true;
-    homePageManager = new HomePageManager(isSql: isSql, isSync: isSync);
+    sortOrder = SortOrder.ASCENDING;
+    homePageManager =
+        new HomePageManager(isSql: isSql, isSync: isSync, sortOrder: sortOrder);
 
     super.initState();
   }
@@ -56,7 +60,7 @@ class _HomePageState extends State<HomePage> {
                         },
                       ),
                       SizedBox(
-                        width: 20,
+                        width: 10,
                       ),
                       FlatButton(
                         child:
@@ -70,10 +74,10 @@ class _HomePageState extends State<HomePage> {
                         },
                       ),
                       SizedBox(
-                        width: 20,
+                        width: 10,
                       ),
                       FlatButton(
-                        child: Text('SYNC INSERT'),
+                        child: Text('INSERT'),
                         color: Colors.cyanAccent,
                         onPressed: () async {
                           Order order1 = new Order(name: 'order1', no: 100);
@@ -81,6 +85,23 @@ class _HomePageState extends State<HomePage> {
 
                           homePageManager.insertDoc(order: order1);
                           homePageManager.insertDoc(order: order2);
+                        },
+                      ),
+                      SizedBox(
+                        width: 10,
+                      ),
+                      FlatButton(
+                        child: Text(
+                            sortOrder == SortOrder.ASCENDING ? "ASC" : "DESC"),
+                        color: Colors.cyanAccent,
+                        onPressed: () async {
+                          setState(() {
+                            sortOrder = sortOrder == SortOrder.ASCENDING
+                                ? SortOrder.DESCENDING
+                                : SortOrder.ASCENDING;
+                          });
+
+                          homePageManager.changeOrder(sortOrder: sortOrder);
                         },
                       ),
                     ],

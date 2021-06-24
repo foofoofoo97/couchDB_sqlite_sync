@@ -8,14 +8,11 @@ class Sychronizer {
   PouchDB localDB;
   PouchDB remoteDB;
 
+  Sychronizer({this.localDB, this.remoteDB});
+
   Future<void> init({
-    PouchDB localDb,
-    PouchDB remoteDb,
     Function callback,
   }) async {
-    localDB = localDb;
-    remoteDB = remoteDb;
-
     await Replicator(localDb: localDB, remoteDb: remoteDB)
         .replicateFromSqlite();
     await Replicator(localDb: localDB, remoteDb: remoteDB)
@@ -23,13 +20,13 @@ class Sychronizer {
     callback();
 
     localSubscription = localDB.stream().listen((event) async {
-      await Replicator(localDb: localDb, remoteDb: remoteDb)
+      await Replicator(localDb: localDB, remoteDb: remoteDB)
           .replicateFromSqlite();
       callback();
     });
 
     remoteSubscription = remoteDB.stream().listen((event) async {
-      await Replicator(localDb: localDb, remoteDb: remoteDb)
+      await Replicator(localDb: localDB, remoteDb: remoteDB)
           .replicateFromCouchDB();
       callback();
     });

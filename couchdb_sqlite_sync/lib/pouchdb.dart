@@ -3,6 +3,7 @@ import 'package:couchdb/couchdb.dart';
 import 'package:couchdb_sqlite_sync/adapters/http_adapter.dart';
 import 'package:couchdb_sqlite_sync/adapters/sqllite_adapter.dart';
 import 'package:couchdb_sqlite_sync/model_class/doc.dart';
+import 'package:couchdb_sqlite_sync/repository/sort_order.dart';
 import 'package:synchronized/synchronized.dart' as Synchronized;
 
 class PouchDB {
@@ -37,8 +38,9 @@ class PouchDB {
     });
   }
 
-  Future<List<Doc>> getAllDocs() async {
-    return await adapter.getAllDocs();
+  Future<List<Doc>> getAllDocs({String query, SortOrder order}) async {
+    return await adapter.getAllDocs(
+        query: query, order: order == SortOrder.ASCENDING ? "asc" : "desc");
   }
 
   Future<Doc> getSelectedDoc({String id}) async {

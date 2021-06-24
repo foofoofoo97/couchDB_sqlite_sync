@@ -10,7 +10,7 @@ class DatabaseDao {
     dbProvider = new DatabaseProvider(dbName: dbName);
   }
 
-  Future<String> isExistingDoc({int id}) async {
+  Future<String> isExistingDoc({String id}) async {
     final db = await dbProvider.database;
     List<Map<String, dynamic>> result;
 
@@ -22,26 +22,26 @@ class DatabaseDao {
     return null;
   }
 
-  Future<int> createdID() async {
-    final db = await dbProvider.database;
-    var result = await db.query(dbName, orderBy: "id DESC", limit: 1);
+  // Future<int> createdID() async {
+  //   final db = await dbProvider.database;
+  //   var result = await db.query(dbName, orderBy: "id DESC", limit: 1);
 
-    List<Doc> lastDoc = result.isNotEmpty
-        ? result.map((item) => Doc.fromDatabaseJson(item)).toList()
-        : [];
+  //   List<Doc> lastDoc = result.isNotEmpty
+  //       ? result.map((item) => Doc.fromDatabaseJson(item)).toList()
+  //       : [];
 
-    return lastDoc.length == 0 ? 0 : lastDoc[0].id;
-  }
+  //   return lastDoc.length == 0 ? 0 : lastDoc[0].id;
+  // }
 
   Future<int> createDoc({Doc doc}) async {
     final db = await dbProvider.database;
     var result = await db.rawInsert(
-        'INSERT INTO $dbName(id, data, rev, revisions) VALUES(${doc.id}, \'${doc.data}\', "${doc.rev}", \'${doc.revisions}\')');
+        'INSERT INTO $dbName(id, data, rev, revisions) VALUES(\'${doc.id}\', \'${doc.data}\', "${doc.rev}", \'${doc.revisions}\')');
 
     return result;
   }
 
-  Future<Doc> getDoc({int id}) async {
+  Future<Doc> getDoc({String id}) async {
     final db = await dbProvider.database;
     List<Map<String, dynamic>> result;
 
@@ -54,14 +54,18 @@ class DatabaseDao {
     return docs.length == 0 ? null : docs[0];
   }
 
-  Future<List<Doc>> getAllDocs({List<String> columns, String query}) async {
+  Future<List<Doc>> getAllDocs(
+      {List<String> columns, String query, String order}) async {
     final db = await dbProvider.database;
     List<Map<String, dynamic>> result;
 
     if (query != null) {
       if (query.isNotEmpty)
         result = await db.query(dbName,
-            columns: columns, where: 'name LIKE ?', whereArgs: ["%$query%"]);
+            columns: columns,
+            where: 'id LIKE ?',
+            whereArgs: ["$query"],
+            orderBy: order != null ? "id $order" : null);
     } else {
       result = await db.query(dbName, columns: columns);
     }
@@ -80,7 +84,7 @@ class DatabaseDao {
     return result;
   }
 
-  Future<int> deleteDoc({int id}) async {
+  Future<int> deleteDoc({String id}) async {
     final db = await dbProvider.database;
     var result = await db.delete(dbName, where: 'id = ?', whereArgs: [id]);
     return result;

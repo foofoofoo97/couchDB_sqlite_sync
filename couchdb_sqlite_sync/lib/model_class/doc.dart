@@ -1,5 +1,5 @@
 class Doc {
-  int id;
+  String id;
   String data;
   String rev;
   String revisions;

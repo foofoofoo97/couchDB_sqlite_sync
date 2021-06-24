@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:couchdb_sqlite_sync/model_class/doc.dart';
 
 class Order {
-  int id;
+  String id;
   String name;
   int no;
   String rev;
