@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:couchdb_sqlite_sync/adapters/adapter_abstract_class.dart';
 import 'package:couchdb_sqlite_sync/model_class/doc.dart';
 import 'package:couchdb/couchdb.dart';
-import 'package:couchdb_sqlite_sync/repository/repository.dart';
 import 'package:dio/dio.dart';
 
 class HttpAdapter extends Adapter {
@@ -68,72 +68,94 @@ class HttpAdapter extends Adapter {
     });
   }
 
-  resolveConflicts(List<Object> bulkDocs, List<String> deletedDocs) async {
-    for (Map doc in bulkDocs) {
-      DocumentsResponse documentsResponse = await docs.doc(
-        dbName,
-        doc['_id'],
-        conflicts: true,
-        revs: true,
-      );
-
-      if (documentsResponse.conflicts != null &&
-          documentsResponse.conflicts.length > 0) {
-        if (doc['_revisions']['start'] >=
-            documentsResponse.revisions['start']) {
-          // if (doc['_rev'] != documentsResponse.rev) {
-          //   await docs.deleteDoc(dbName, doc['_id'], documentsResponse.rev);
-          // } else {
-          //   for (String conflict in documentsResponse.conflicts) {
-          //     await docs.deleteDoc(dbName, doc['_id'], conflict);
-          //   }
-          // }
-          for (String conflict in documentsResponse.conflicts) {
-            int index = int.parse(conflict.split('-')[0]);
-            String tail = conflict.split('-')[1];
-            if (doc['_revisions']['ids'].length > index) {
-              if (tail != doc['_revisions']['ids'][index]) {
-                await docs.deleteDoc(dbName, doc['_id'], conflict);
-              } else {
-                List winnerRevisions = documentsResponse.revisions['ids'];
-                if (winnerRevisions.length > index) {
-                  await docs.deleteDoc(dbName, doc['_id'],
-                      '$index-${winnerRevisions[winnerRevisions.length - 1 - index]}');
-                }
-              }
-            }
-          }
-        } else {
-          await docs.deleteDoc(dbName, doc['_id'], doc['_rev']);
-        }
-      }
-    }
-    //do i need to put condition like completely new revision, then should i follow couchdb??
-    for (String id in deletedDocs) {
-      try {
-        DocumentsResponse documentsResponse = await docs.doc(
-          dbName,
-          id,
-          conflicts: true,
-          revs: true,
-        );
-
-        await docs.deleteDoc(dbName, id, documentsResponse.rev);
-      } catch (e) {
-        print(e);
-      }
-    }
-  }
-
   doc(String docId) async {
     return await docs.doc(dbName, docId);
   }
 
   @override
-  insertBulkDocs(List<Object> bulkDocs, List<String> deletedDocs) async {
+  insertDocs(List<Doc> docs) async {
+    for (Doc doc in docs) {
+      doc.rev = "0-${generateRandomString(33)}";
+      doc.revisions = jsonEncode({
+        "_revisions": [doc.rev.split('-')[1]]
+      });
+    }
+  }
+
+  @override
+  updateDocs(List<Doc> docs) async {}
+
+  @override
+  deleteDocs(List<Doc> docs) async {}
+
+  @override
+  insertBulkDocs(List<Object> bulkDocs) async {
     await dbs.insertBulkDocs(dbName, bulkDocs, newEdits: false);
-    await resolveConflicts(bulkDocs, deletedDocs);
     await ensureFullCommit();
+  }
+
+  @override
+  replicateDatabase(List<Object> bulkDocs, List<String> deletedDocs) async {
+    await insertBulkDocs(bulkDocs);
+    await resolveConflicts(bulkDocs, deletedDocs);
+  }
+
+  resolveConflicts(List<Object> bulkDocs, List<String> deletedDocs) async {
+    for (Map doc in bulkDocs) {
+      try {
+        DocumentsResponse documentsResponse = await docs.doc(
+          dbName,
+          doc['_id'],
+          conflicts: true,
+          revs: true,
+        );
+
+        if (documentsResponse.conflicts != null &&
+            documentsResponse.conflicts.length > 0) {
+          if (doc['_revisions']['start'] >=
+              documentsResponse.revisions['start']) {
+            // if (doc['_rev'] != documentsResponse.rev) {
+            //   await docs.deleteDoc(dbName, doc['_id'], documentsResponse.rev);
+            // } else {
+            //   for (String conflict in documentsResponse.conflicts) {
+            //     await docs.deleteDoc(dbName, doc['_id'], conflict);
+            //   }
+            // }
+            for (String conflict in documentsResponse.conflicts) {
+              int index = int.parse(conflict.split('-')[0]);
+              String tail = conflict.split('-')[1];
+              if (doc['_revisions']['ids'].length > index) {
+                if (tail != doc['_revisions']['ids'][index]) {
+                  await docs.deleteDoc(dbName, doc['_id'], conflict);
+                } else {
+                  List winnerRevisions = documentsResponse.revisions['ids'];
+                  if (winnerRevisions.length > index) {
+                    await docs.deleteDoc(dbName, doc['_id'],
+                        '$index-${winnerRevisions[winnerRevisions.length - 1 - index]}');
+                  }
+                }
+              }
+            }
+          } else {
+            await docs.deleteDoc(dbName, doc['_id'], doc['_rev']);
+          }
+        }
+      } on HttpException catch (e) {
+        print('IsHttpException');
+        print(e);
+      }
+      throw {};
+    }
+
+    for (String id in deletedDocs) {
+      try {
+        DocumentsResponse documentsResponse = await doc(id);
+        await docs.deleteDoc(dbName, id, documentsResponse.rev);
+      } on HttpException catch (e) {
+        print('Is HttpException');
+        print(e);
+      } catch (e) {}
+    }
   }
 
   @override
@@ -169,7 +191,7 @@ class HttpAdapter extends Adapter {
 
   createIndex({List<String> fields, String name, String type = "json"}) async {
     DatabasesResponse databasesResponse = await dbs.createIndexIn(dbName,
-        indexFields: fields, name: "name", type: type);
+        indexFields: fields, name: "$name-index", type: type);
     return databasesResponse;
   }
 
@@ -191,10 +213,11 @@ class HttpAdapter extends Adapter {
         docs.add(doc);
       }
     } else {
+      createIndex(fields: ['_id'], name: "id");
       databasesResponse = await dbs.find(
           dbName,
           {
-            "_id": {"\$regex": query},
+            "_id": {"\$regex": "^$query"},
           },
           sort: [
             {"_id": order}
@@ -333,21 +356,20 @@ class HttpAdapter extends Adapter {
   @override
   getBulkDocs(Map revsDiff) async {
     try {
-      List<Doc> dishes = new List();
+      List<Doc> documents = new List();
       for (String id in revsDiff.keys) {
         DocumentsResponse documentsResponse =
             await docs.doc(dbName, id, revs: true, latest: true);
 
-        Doc dish = new Doc();
-        dish.data = documentsResponse.doc['data'];
-        dish.id = id;
-        dish.rev = documentsResponse.doc['_rev'];
-        dish.revisions =
+        Doc doc = new Doc();
+        doc.data = documentsResponse.doc['data'];
+        doc.id = id;
+        doc.rev = documentsResponse.doc['_rev'];
+        doc.revisions =
             jsonEncode({'_revisions': documentsResponse.revisions['ids']});
-        dishes.add(dish);
+        documents.add(doc);
       }
-
-      return dishes;
+      return documents;
     } on CouchDbException catch (e) {
       print('$e - error');
     }

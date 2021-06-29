@@ -15,5 +15,8 @@ class DatabaseRepository {
   Future deleteAllDocs() => databaseDao.deleteAllDocs();
   Future getSelectedDoc({String id}) => databaseDao.getDoc(id: id);
   // Future createdID() => databaseDao.createdID();
-  Future isExistingDoc({String id}) => databaseDao.isExistingDoc(id: id);
+  Future insertDocs({List<Doc> docs}) => databaseDao.insertDocs(docs: docs);
+  Future deleteDocs({List<String> docs}) => databaseDao.deleteDocs(docs: docs);
+  Future updateDocs({List<Doc> docs}) => databaseDao.updateDocs(docs: docs);
+  // Future isExistingDoc({String id}) => databaseDao.isExistingDoc(id: id);
 }

@@ -10,17 +10,17 @@ class DatabaseDao {
     dbProvider = new DatabaseProvider(dbName: dbName);
   }
 
-  Future<String> isExistingDoc({String id}) async {
-    final db = await dbProvider.database;
-    List<Map<String, dynamic>> result;
+  // Future<String> isExistingDoc({String id}) async {
+  //   final db = await dbProvider.database;
+  //   List<Map<String, dynamic>> result;
 
-    result = await db.query(dbName, where: "id = ?", whereArgs: [id]);
+  //   result = await db.query(dbName, where: "id = ?", whereArgs: [id]);
 
-    if (result.length > 0) {
-      return result[0]['rev'].toString();
-    }
-    return null;
-  }
+  //   if (result.length > 0) {
+  //     return result[0]['rev'].toString();
+  //   }
+  //   return null;
+  // }
 
   // Future<int> createdID() async {
   //   final db = await dbProvider.database;
@@ -33,12 +33,10 @@ class DatabaseDao {
   //   return lastDoc.length == 0 ? 0 : lastDoc[0].id;
   // }
 
-  Future<int> createDoc({Doc doc}) async {
+  Future<void> createDoc({Doc doc}) async {
     final db = await dbProvider.database;
-    var result = await db.rawInsert(
+    await db.rawInsert(
         'INSERT INTO $dbName(id, data, rev, revisions) VALUES(\'${doc.id}\', \'${doc.data}\', "${doc.rev}", \'${doc.revisions}\')');
-
-    return result;
   }
 
   Future<Doc> getDoc({String id}) async {
@@ -64,7 +62,7 @@ class DatabaseDao {
         result = await db.query(dbName,
             columns: columns,
             where: 'id LIKE ?',
-            whereArgs: ["$query"],
+            whereArgs: ["$query%"],
             orderBy: order != null ? "id $order" : null);
     } else {
       result = await db.query(dbName, columns: columns);
@@ -77,11 +75,45 @@ class DatabaseDao {
     return docs;
   }
 
-  Future<int> updateDoc({Doc doc}) async {
+  Future<void> updateDoc({Doc doc}) async {
     final db = await dbProvider.database;
-    var result = await db.update(dbName, doc.toDatabaseJson(),
+    await db.update(dbName, doc.toDatabaseJson(),
         where: "id = ?", whereArgs: [doc.id]);
-    return result;
+  }
+
+  Future<void> insertDocs({List<Doc> docs}) async {
+    final db = await dbProvider.database;
+    var batch = db.batch();
+
+    for (Doc doc in docs) {
+      batch.rawInsert(
+          'INSERT INTO $dbName(id, data, rev, revisions) VALUES(\'${doc.id}\', \'${doc.data}\', "${doc.rev}", \'${doc.revisions}\')');
+    }
+
+    final result = await batch.commit();
+    print(result);
+  }
+
+  Future<void> deleteDocs({List<String> docs}) async {
+    final db = await dbProvider.database;
+    var batch = db.batch();
+    for (String id in docs) {
+      batch.delete(dbName, where: 'id = ?', whereArgs: [id]);
+    }
+    final result = await batch.commit();
+    print(result);
+  }
+
+  Future<void> updateDocs({List<Doc> docs}) async {
+    final db = await dbProvider.database;
+    var batch = db.batch();
+    for (Doc doc in docs) {
+      batch.update(dbName, doc.toDatabaseJson(),
+          where: "id = ?", whereArgs: [doc.id]);
+    }
+
+    final result = await batch.commit();
+    print(result);
   }
 
   Future<int> deleteDoc({String id}) async {

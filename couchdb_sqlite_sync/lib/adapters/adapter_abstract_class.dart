@@ -11,5 +11,9 @@ abstract class Adapter {
   getBulkDocs(Map diff);
   getRevsDiff(Map revs);
   // createdID();
-  insertBulkDocs(List<Object> bulkDocs, List<String> deletedDocs);
+  replicateDatabase(List<Object> bulkDocs, List<String> deletedDocs);
+  insertBulkDocs(List<Object> bulkDocs);
+  insertDocs(List<Doc> docs);
+  updateDocs(List<Doc> docs);
+  deleteDocs(List<Doc> docs);
 }

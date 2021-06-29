@@ -15,6 +15,7 @@ class _HomePageState extends State<HomePage> {
   final DismissDirection _dismissDirection = DismissDirection.horizontal;
   final nameController = TextEditingController();
   final searchController = TextEditingController();
+  final noOfInsertController = TextEditingController();
 
   HomePageManager homePageManager;
 
@@ -27,8 +28,7 @@ class _HomePageState extends State<HomePage> {
     isSql = true;
     isSync = true;
     sortOrder = SortOrder.ASCENDING;
-    homePageManager =
-        new HomePageManager(isSql: isSql, isSync: isSync, sortOrder: sortOrder);
+    homePageManager = new HomePageManager(isSync: isSync, sortOrder: sortOrder);
 
     super.initState();
   }
@@ -43,6 +43,45 @@ class _HomePageState extends State<HomePage> {
                 padding:
                     const EdgeInsets.only(left: 2.0, right: 2.0, bottom: 2.0),
                 child: Column(children: <Widget>[
+                  SizedBox(
+                    height: 8.0,
+                  ),
+                  Row(
+                    children: <Widget>[
+                      SizedBox(
+                        width: 5.0,
+                      ),
+                      Expanded(
+                          child: TextField(
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        controller: noOfInsertController,
+                      )),
+                      SizedBox(
+                        width: 5.0,
+                      ),
+                      FlatButton(
+                        color: Colors.black,
+                        child: Text(
+                          "INSERT",
+                          style: TextStyle(color: Colors.yellowAccent),
+                        ),
+                        onPressed: () {
+                          print('ordering...');
+                          List<Order> orders = new List();
+                          for (int no = 0;
+                              no <
+                                  int.parse(
+                                      noOfInsertController.text.toString());
+                              no++) {
+                            orders.add(Order(no: no, name: "insert $no"));
+                          }
+                          print('orders generated');
+                          homePageManager.insertDocs(docs: orders);
+                        },
+                      )
+                    ],
+                  ),
                   SizedBox(
                     height: 8.0,
                   ),
@@ -66,11 +105,11 @@ class _HomePageState extends State<HomePage> {
                         child:
                             Text('${isSync == true ? 'ON SYNC' : 'OFF SYNC'}'),
                         color: Colors.yellow,
-                        onPressed: () {
+                        onPressed: () async {
                           setState(() {
                             isSync = !isSync;
-                            homePageManager.updateSync(isSync: isSync);
                           });
+                          await homePageManager.updateSync(isSync: isSync);
                         },
                       ),
                       SizedBox(

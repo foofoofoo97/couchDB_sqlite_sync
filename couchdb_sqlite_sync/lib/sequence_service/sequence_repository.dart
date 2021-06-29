@@ -10,21 +10,20 @@ class SequenceRepository {
     dbProvider = SequenceDatabaseProvider(dbName: dbName);
   }
 
-  Future<String> isExistingData(int id) async {
-    final db = await dbProvider.database;
-    List<Map<String, dynamic>> result;
+  // Future<String> isExistingData(int id) async {
+  //   final db = await dbProvider.database;
+  //   List<Map<String, dynamic>> result;
 
-    result = await db.query(dbName, where: "id = ?", whereArgs: [id]);
-    if (result.length > 0) {
-      return result[0]['rev'].toString();
-    }
-    return null;
-  }
+  //   result = await db.query(dbName, where: "id = ?", whereArgs: [id]);
+  //   if (result.length > 0) {
+  //     return result[0]['rev'].toString();
+  //   }
+  //   return null;
+  // }
 
   //Adds new
   Future<int> getUpdateSeq() async {
     final db = await dbProvider.database;
-
     var result = await db.query(dbName, orderBy: "seq DESC", limit: 1);
     List<SequenceLog> lastSequence = result.isNotEmpty
         ? result.map((item) => SequenceLog.fromDatabaseJson(item)).toList()
@@ -39,6 +38,17 @@ class SequenceRepository {
     var result = await db.rawInsert(
         'INSERT INTO $dbName(id, deleted, changes, data, rev) VALUES("${sequenceLog.id}", \'${sequenceLog.deleted}\', \'${sequenceLog.changes}\', \'${sequenceLog.data}\', "${sequenceLog.rev}")');
     return result;
+  }
+
+  Future<void> addSequences(List<SequenceLog> sequenceLogs) async {
+    final db = await dbProvider.database;
+    final batch = db.batch();
+    for (SequenceLog sequenceLog in sequenceLogs) {
+      batch.rawInsert(
+          'INSERT INTO $dbName(id, deleted, changes, data, rev) VALUES("${sequenceLog.id}", \'${sequenceLog.deleted}\', \'${sequenceLog.changes}\', \'${sequenceLog.data}\', "${sequenceLog.rev}")');
+    }
+    final results = await batch.commit();
+    print(results);
   }
 
   //Get Sequence Which Is Missing From CouchDB

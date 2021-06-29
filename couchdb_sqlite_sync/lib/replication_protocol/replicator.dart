@@ -120,25 +120,15 @@ class Replicator {
         }
       }
 
-      //Get ids to replicate
       Map revsDiff = await localDb.getRevsDiff(revs: revs);
+      List<Object> bulkDocs = [
+        await remoteDb.getBulkDocs(diff: revsDiff['insert']) ?? new List<Doc>(),
+        await remoteDb.getBulkDocs(diff: revsDiff['update']) ?? new List<Doc>(),
+      ];
 
-      List<Doc> updateDishes =
-          await remoteDb.getBulkDocs(diff: revsDiff['update']);
-      for (Doc doc in updateDishes) {
-        await localDb.adapter.updateSourceDoc(doc);
-      }
+      List<String> deletedDocs = revsDiff['deleted'].keys.toList();
 
-      List<Doc> newDishes =
-          await remoteDb.getBulkDocs(diff: revsDiff['insert']);
-      for (Doc doc in newDishes) {
-        await localDb.adapter.insertSourceDoc(doc);
-      }
-
-      for (String id in revsDiff['deleted'].keys) {
-        Doc doc = await localDb.getSelectedDoc(id: id);
-        await localDb.adapter.deleteDoc(doc);
-      }
+      localDb.replicateDatabase(bulkDocs: bulkDocs, deletedDocs: deletedDocs);
     }
   }
 
@@ -151,9 +141,7 @@ class Replicator {
 
     for (SequenceLog sequenceLog in sequences) {
       if (sequenceLog.deleted == 'true' && !revs.containsKey(sequenceLog.id)) {
-        Doc doc = new Doc(id: sequenceLog.id, rev: sequenceLog.rev);
-        await remoteDb.adapter.deleteDoc(doc);
-        deletedDocs.add(doc.id.toString());
+        deletedDocs.add(sequenceLog.id);
       } else {
         revs.putIfAbsent(sequenceLog.id, () => []);
         List changesRev = jsonDecode(sequenceLog.changes)['changes'];
@@ -168,6 +156,7 @@ class Replicator {
 
     List<Object> bulkDocs = await localDb.getBulkDocs(diff: revsDiff);
 
-    await remoteDb.insertBulkDocs(bulkDocs: bulkDocs, deletedDocs: deletedDocs);
+    await remoteDb.replicateDatabase(
+        bulkDocs: bulkDocs, deletedDocs: deletedDocs);
   }
 }

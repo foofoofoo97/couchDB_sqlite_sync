@@ -3,7 +3,6 @@ import 'package:couchdb/couchdb.dart';
 import 'package:couchdb_sqlite_sync/adapters/http_adapter.dart';
 import 'package:couchdb_sqlite_sync/adapters/sqllite_adapter.dart';
 import 'package:couchdb_sqlite_sync/model_class/doc.dart';
-import 'package:couchdb_sqlite_sync/repository/sort_order.dart';
 import 'package:synchronized/synchronized.dart' as Synchronized;
 
 class PouchDB {
@@ -38,9 +37,26 @@ class PouchDB {
     });
   }
 
-  Future<List<Doc>> getAllDocs({String query, SortOrder order}) async {
-    return await adapter.getAllDocs(
-        query: query, order: order == SortOrder.ASCENDING ? "asc" : "desc");
+  Future<void> insertDocs({List<Doc> docs}) async {
+    await lock.synchronized(() async {
+      await adapter.insertDocs(docs);
+    });
+  }
+
+  Future<void> deleteDocs({List<Doc> docs}) async {
+    await lock.synchronized(() async {
+      await adapter.deleteDocs(docs);
+    });
+  }
+
+  Future<void> updateDocs({List<Doc> docs}) async {
+    await lock.synchronized(() async {
+      await adapter.updateDocs(docs);
+    });
+  }
+
+  Future<List<Doc>> getAllDocs({String query, String order}) async {
+    return await adapter.getAllDocs(query: query, order: order);
   }
 
   Future<Doc> getSelectedDoc({String id}) async {
@@ -67,9 +83,13 @@ class PouchDB {
     return await adapter.getRevsDiff(revs);
   }
 
-  Future<void> insertBulkDocs(
+  Future<void> insertBulkDocs({List<Object> bulkDocs}) async {
+    return await adapter.insertDocs(bulkDocs);
+  }
+
+  Future<void> replicateDatabase(
       {List<Object> bulkDocs, List<String> deletedDocs}) async {
-    return await adapter.insertBulkDocs(bulkDocs, deletedDocs);
+    return await adapter.replicateDatabase(bulkDocs, deletedDocs);
   }
 
   Future<void> insertLog(
